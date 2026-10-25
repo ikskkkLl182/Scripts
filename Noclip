@@ -252,26 +252,41 @@ local function restoreNoclip()
 end
  
 -- ============================================================
--- ВСТАВЛЕННЫЙ TP-ФЛАЙ (из твоего кода, без менюшки)
+-- ВСТАВЛЕННЫЙ ФЛАЙ (ровно твой код, без менюшки)
 -- ============================================================
 local tpwalking = false
-local flyThreads = {}
+local flySpeedCount = 3
 
 local function stopFly()
     tpwalking = false
-    flyThreads = {}
 end
 
-local function startFly()
+local function startFly(speeds)
+    speeds = math.max(1, math.floor(speeds or S.flySpeed or 3))
+    flySpeedCount = speeds
     if tpwalking then
         tpwalking = false
         task.wait()
     end
     tpwalking = true
 
-    local speeds = math.max(1, math.floor(S.flySpeed or 3))
+    -- Отключаем анимации в воздухе
+    local char = player.Character
+    if char then
+        local animate = char:FindFirstChild("Animate")
+        if animate then
+            animate.Disabled = true
+        end
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if hum then
+            for _, track in ipairs(hum:GetPlayingAnimationTracks()) do
+                track:Stop()
+            end
+        end
+    end
+
     for i = 1, speeds do
-        local thread = task.spawn(function()
+        spawn(function()
             local hb = game:GetService("RunService").Heartbeat
             local chr = game.Players.LocalPlayer.Character
             local hum = chr and chr:FindFirstChildWhichIsA("Humanoid")
@@ -281,7 +296,6 @@ local function startFly()
                 end
             end
         end)
-        table.insert(flyThreads, thread)
     end
 end
 -- ============================================================
@@ -818,10 +832,10 @@ addToggle(pageMove, "Noclip", false, function(v)
     if not v then restoreNoclip() end
 end, "noclip", Enum.KeyCode.N)
  
-addToggle(pageMove, "Fly (TP-walk)", false, function(v)
+addToggle(pageMove, "Fly", false, function(v)
     S.fly = v
     if v then
-        startFly()
+        startFly(S.flySpeed)
     else
         stopFly()
     end
@@ -831,7 +845,8 @@ addSlider(pageMove, "Fly speed", 1, 20, S.flySpeed, function(v)
     S.flySpeed = v
     if S.fly then
         stopFly()
-        startFly()
+        task.wait(0.05)
+        startFly(v)
     end
 end)
  
@@ -922,7 +937,7 @@ addBindRow(pageMisc, "Menu key", "menu", Enum.KeyCode.K, function()
     setOpen(not opened)
 end)
  
-addInfo(pageMisc, "Click a key box, then press the key you want.\nEsc cancels, Backspace clears the bind.\nFly speed = steps per tick (как speeds).", 72)
+addInfo(pageMisc, "Click a key box, then press the key you want.\nEsc cancels, Backspace clears the bind.\nFly speed = кол-во шагов TranslateBy за тик.", 72)
  
 addButton(pageMisc, "Rejoin server", function()
     TeleportService:Teleport(game.PlaceId, player)
