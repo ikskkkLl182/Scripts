@@ -1,40 +1,62 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local CoreGui = game:GetService("CoreGui")
+local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 
 local LocalPlayer = Players.LocalPlayer
 local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
 
 local noclipActive = false
-local connection = nil
+local noclipConnection = nil
+
+local TargetParent = nil
+local success, err = pcall(function()
+    if gethud then return gethud() end
+    if get_hidden_gui then return get_hidden_gui() end
+    return LocalPlayer:WaitForChild("PlayerGui")
+end)
+TargetParent = success and err or LocalPlayer:WaitForChild("PlayerGui")
 
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "AstralNoclipGui"
+ScreenGui.Name = "AstralEngine_Noclip"
 ScreenGui.ResetOnSpawn = false
-ScreenGui.Parent = CoreGui
+ScreenGui.Parent = TargetParent
 
 local ActionButton = Instance.new("TextButton")
-ActionButton.Size = UDim2.new(0, 120, 0, 45)
-ActionButton.Position = UDim2.new(0.1, 0, 0.5, 0)
-ActionButton.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-ActionButton.TextColor3 = Color3.fromRGB(255, 50, 50)
+ActionButton.Size = UDim2.new(0, 140, 0, 50)
+ActionButton.Position = UDim2.new(0.5, -70, 0.5, -25)
+ActionButton.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+ActionButton.TextColor3 = Color3.fromRGB(255, 75, 75)
 ActionButton.Text = "Noclip: OFF"
 ActionButton.Font = Enum.Font.Code
-ActionButton.TextSize = 14
+ActionButton.TextSize = 15
 ActionButton.BorderSizePixel = 0
+ActionButton.Active = true
 ActionButton.Parent = ScreenGui
 
 local UICorner = Instance.new("UICorner")
-UICorner.CornerRadius = UDim.new(0, 8)
+UICorner.CornerRadius = UDim.new(0, 6)
 UICorner.Parent = ActionButton
 
-local dragging, dragInput, dragStart, startPos
+local UIStroke = Instance.new("UIStroke")
+UIStroke.Thickness = 1.5
+UIStroke.Color = Color3.fromRGB(40, 40, 40)
+UIStroke.Parent = ActionButton
 
-local function update(input)
+local dragging = false
+local dragInput = nil
+local dragStart = nil
+local startPos = nil
+
+local function updatePosition(input)
     local delta = input.Position - dragStart
-    local targetPos = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-    TweenService:Create(ActionButton, TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Position = targetPos}):Play()
+    local targetPos = UDim2.new(
+        startPos.X.Scale, 
+        startPos.X.Offset + delta.X, 
+        startPos.Y.Scale, 
+        startPos.Y.Offset + delta.Y
+    )
+    TweenService:Create(ActionButton, TweenInfo.new(0.08, Enum.EasingStyle.OutQuad), {Position = targetPos}):Play()
 end
 
 ActionButton.InputBegan:Connect(function(input)
@@ -57,36 +79,39 @@ ActionButton.InputChanged:Connect(function(input)
     end
 end)
 
-RunService.InputChanged:Connect(function(input)
+UserInputService.InputChanged:Connect(function(input)
     if input == dragInput and dragging then
-        update(input)
+        updatePosition(input)
     end
 end)
+
+local function forceNoclip()
+    if Character then
+        for _, part in ipairs(Character:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = false
+            end
+        end
+    end
+end
 
 local function toggleNoclip()
     noclipActive = not noclipActive
     
     if noclipActive then
-        ActionButton.TextColor3 = Color3.fromRGB(50, 255, 50)
+        ActionButton.TextColor3 = Color3.fromRGB(75, 255, 75)
+        UIStroke.Color = Color3.fromRGB(75, 255, 75)
         ActionButton.Text = "Noclip: ON"
         
-        connection = RunService.Stepped:Connect(function()
-            Character = LocalPlayer.Character
-            if Character then
-                for _, part in ipairs(Character:GetDescendants()) do
-                    if part:IsA("BasePart") and part.CanCollide then
-                        part.CanCollide = false
-                    end
-                end
-            end
-        end)
+        noclipConnection = RunService.Heartbeat:Connect(forceNoclip)
     else
-        ActionButton.TextColor3 = Color3.fromRGB(255, 50, 50)
+        ActionButton.TextColor3 = Color3.fromRGB(255, 75, 75)
+        UIStroke.Color = Color3.fromRGB(40, 40, 40)
         ActionButton.Text = "Noclip: OFF"
         
-        if connection then
-            connection:Disconnect()
-            connection = nil
+        if noclipConnection then
+            noclipConnection:Disconnect()
+            noclipConnection = nil
         end
     end
 end
