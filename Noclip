@@ -2,14 +2,12 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
-local Lighting = game:GetService("Lighting")
-local TeleportService = game:GetService("TeleportService")
 
 local player = Players.LocalPlayer
 local env = (getgenv and getgenv()) or _G
 
-if env.__AstralCleanup then
-    pcall(env.__AstralCleanup)
+if env.__NoclipCleanup then
+    pcall(env.__NoclipCleanup)
 end
 
 local connections = {}
@@ -19,35 +17,14 @@ local function connect(signal, fn)
     return c
 end
 
-local THEME = {
-    bg = Color3.fromRGB(14, 14, 22),
-    panel = Color3.fromRGB(21, 21, 33),
-    item = Color3.fromRGB(30, 30, 46),
-    hover = Color3.fromRGB(44, 44, 66),
-    text = Color3.fromRGB(235, 235, 245),
-    dim = Color3.fromRGB(140, 140, 165),
-    accent = Color3.fromRGB(140, 90, 255),
-    accent2 = Color3.fromRGB(60, 200, 255),
-    off = Color3.fromRGB(58, 58, 80),
-    danger = Color3.fromRGB(255, 80, 100),
+local noclip = false
+local original = {}
+
+local COLORS = {
+    off = {a = Color3.fromRGB(255, 70, 100), b = Color3.fromRGB(150, 80, 255), bg = Color3.fromRGB(20, 18, 28)},
+    on  = {a = Color3.fromRGB(60, 255, 160), b = Color3.fromRGB(60, 200, 255), bg = Color3.fromRGB(14, 30, 30)},
 }
-
-local function new(class, props, parent)
-    local inst = Instance.new(class)
-    if props then
-        for k, v in pairs(props) do
-            inst[k] = v
-        end
-    end
-    if parent then
-        inst.Parent = parent
-    end
-    return inst
-end
-
-local function corner(obj, radius)
-    return new("UICorner", {CornerRadius = UDim.new(0, radius)}, obj)
-end
+local currentPal = COLORS.off
 
 local function tween(obj, props, time, style)
     TweenService:Create(
@@ -57,590 +34,10 @@ local function tween(obj, props, time, style)
     ):Play()
 end
 
-local layoutCounter = 0
-local function nextOrder()
-    layoutCounter = layoutCounter + 1
-    return layoutCounter
-end
-
-local HttpService = game:GetService("HttpService")
-local SAVE_FILE = "astral_binds.json"
-local savedBinds = {}
-
-if readfile and isfile then
-    pcall(function()
-        if isfile(SAVE_FILE) then
-            local decoded = HttpService:JSONDecode(readfile(SAVE_FILE))
-            if type(decoded) == "table" then
-                savedBinds = decoded
-            end
-        end
-    end)
-end
-
-local binds = {}
-local bindActions = {}
-local bindRefresh = {}
-local listeningId = nil
-
-local function saveBinds()
-    if not writefile then return end
-    local data = {}
-    for id, key in pairs(binds) do
-        data[id] = key and key.Name or ""
-    end
-    pcall(function()
-        writefile(SAVE_FILE, HttpService:JSONEncode(data))
-    end)
-end
-
-local function keyText(key)
-    if not key then return "None" end
-    local n = key.Name
-    n = string.gsub(n, "Control", "Ctrl")
-    n = string.gsub(n, "^Left", "L")
-    n = string.gsub(n, "^Right", "R")
-    return n
-end
-
-local function registerBind(id, defaultKey, action)
-    local resolved = defaultKey or false
-    local saved = savedBinds[id]
-    if type(saved) == "string" then
-        if saved == "" then
-            resolved = false
-        else
-            local ok, key = pcall(function() return Enum.KeyCode[saved] end)
-            if ok and key then resolved = key end
-        end
-    end
-    binds[id] = resolved
-    bindActions[id] = action
-end
-
-local function makeBindButton(parent, id, position)
-    local btn = new("TextButton", {
-        Size = UDim2.fromOffset(72, 24),
-        Position = position,
-        BackgroundColor3 = THEME.bg,
-        AutoButtonColor = false,
-        Text = keyText(binds[id]),
-        Font = Enum.Font.GothamBold,
-        TextSize = 11,
-        TextColor3 = THEME.accent2,
-    }, parent)
-    corner(btn, 6)
-    local st = new("UIStroke", {
-        Thickness = 1,
-        Color = THEME.off,
-        ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
-    }, btn)
-
-    local function refresh()
-        local listening = listeningId == id
-        btn.Text = listening and "..." or keyText(binds[id])
-        btn.TextColor3 = listening and THEME.text or (binds[id] and THEME.accent2 or THEME.dim)
-        tween(st, {Color = listening and THEME.accent or THEME.off}, 0.15)
-    end
-
-    bindRefresh[id] = refresh
-
-    connect(btn.Activated, function()
-        local prev = listeningId
-        if listeningId == id then
-            listeningId = nil
-        else
-            listeningId = id
-        end
-        if prev and bindRefresh[prev] then bindRefresh[prev]() end
-        refresh()
-    end)
-
-    refresh()
-end
-
-local function addBindRow(page, text, id, defaultKey, action)
-    local row = new("Frame", {
-        Size = UDim2.new(1, 0, 0, 40),
-        BackgroundColor3 = THEME.item,
-        BorderSizePixel = 0,
-        LayoutOrder = nextOrder(),
-    }, page)
-    corner(row, 8)
-    new("TextLabel", {
-        BackgroundTransparency = 1,
-        Position = UDim2.fromOffset(14, 0),
-        Size = UDim2.new(1, -100, 1, 0),
-        Font = Enum.Font.GothamMedium,
-        TextSize = 14,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        TextColor3 = THEME.text,
-        Text = text,
-    }, row)
-    registerBind(id, defaultKey, action)
-    makeBindButton(row, id, UDim2.new(1, -86, 0.5, -12))
-end
-
-connect(UserInputService.InputBegan, function(input, processed)
-    if listeningId then
-        if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
-        local id = listeningId
-        listeningId = nil
-        if input.KeyCode == Enum.KeyCode.Escape then
-        elseif input.KeyCode == Enum.KeyCode.Backspace then
-            binds[id] = false
-        else
-            for otherId, key in pairs(binds) do
-                if otherId ~= id and key == input.KeyCode then
-                    binds[otherId] = false
-                    if bindRefresh[otherId] then bindRefresh[otherId]() end
-                end
-            end
-            binds[id] = input.KeyCode
-        end
-        if bindRefresh[id] then bindRefresh[id]() end
-        saveBinds()
-        return
-    end
-
-    if processed then return end
-    if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
-
-    for id, key in pairs(binds) do
-        if key and key == input.KeyCode then
-            local action = bindActions[id]
-            if action then pcall(action) end
-        end
-    end
-end)
-
-local S = {
-    noclip = false,
-    speed = false,
-    speedVal = 50,
-    jump = false,
-    jumpVal = 100,
-    infJump = false,
-    clickTp = false,
-    antiAfk = false,
-    fov = nil,
-}
-
-local defaults = {walk = 16, jump = 50, useJumpPower = true}
-local defaultGravity = workspace.Gravity
-
-local function getHum()
-    local c = player.Character
-    return c and c:FindFirstChildOfClass("Humanoid")
-end
-
-local function getRoot()
-    local c = player.Character
-    return c and c:FindFirstChild("HumanoidRootPart")
-end
-
-local noclipOriginal = {}
-local function restoreNoclip()
-    for part, value in pairs(noclipOriginal) do
-        if part and part.Parent then
-            part.CanCollide = value
-        end
-    end
-    noclipOriginal = {}
-end
-
--- ===== FLY: FLY GUI V3 by XNEO (script unchanged, its GUI removed) =====
-local speeds, nowe, tpwalking, tis, dis, Duration
-local flyToggle, flySlider
-local flyHandler, flyPlus, flyMinus, startTpWalk
-
-do
-	speeds = 1
-
-	local speaker = game:GetService("Players").LocalPlayer
-
-	local chr = game.Players.LocalPlayer.Character
-	local hum = chr and chr:FindFirstChildWhichIsA("Humanoid")
-
-	nowe = false
-
-	pcall(function()
-		game:GetService("StarterGui"):SetCore("SendNotification", { 
-			Title = "FLY GUI V3";
-			Text = "BY XNEO";
-			Icon = "rbxthumb://type=Asset&id=5107182114&w=150&h=150"})
-	end)
-	Duration = 5;
-
-	-- onof button handler
-	flyHandler = function()
-
-		if nowe == true then
-			nowe = false
-
-			speaker.Character.Humanoid:SetStateEnabled(Enum.HumanoidStateType.Climbing,true)
-			speaker.Character.Humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown,true)
-			speaker.Character.Humanoid:SetStateEnabled(Enum.HumanoidStateType.Flying,true)
-			speaker.Character.Humanoid:SetStateEnabled(Enum.HumanoidStateType.Freefall,true)
-			speaker.Character.Humanoid:SetStateEnabled(Enum.HumanoidStateType.GettingUp,true)
-			speaker.Character.Humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping,true)
-			speaker.Character.Humanoid:SetStateEnabled(Enum.HumanoidStateType.Landed,true)
-			speaker.Character.Humanoid:SetStateEnabled(Enum.HumanoidStateType.Physics,true)
-			speaker.Character.Humanoid:SetStateEnabled(Enum.HumanoidStateType.PlatformStanding,true)
-			speaker.Character.Humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll,true)
-			speaker.Character.Humanoid:SetStateEnabled(Enum.HumanoidStateType.Running,true)
-			speaker.Character.Humanoid:SetStateEnabled(Enum.HumanoidStateType.RunningNoPhysics,true)
-			speaker.Character.Humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated,true)
-			speaker.Character.Humanoid:SetStateEnabled(Enum.HumanoidStateType.StrafingNoPhysics,true)
-			speaker.Character.Humanoid:SetStateEnabled(Enum.HumanoidStateType.Swimming,true)
-			speaker.Character.Humanoid:ChangeState(Enum.HumanoidStateType.RunningNoPhysics)
-		else 
-			nowe = true
-
-
-
-			for i = 1, speeds do
-				spawn(function()
-
-					local hb = game:GetService("RunService").Heartbeat	
-
-
-					tpwalking = true
-					local chr = game.Players.LocalPlayer.Character
-					local hum = chr and chr:FindFirstChildWhichIsA("Humanoid")
-					while tpwalking and hb:Wait() and chr and hum and hum.Parent do
-						if hum.MoveDirection.Magnitude > 0 then
-							chr:TranslateBy(hum.MoveDirection)
-						end
-					end
-
-				end)
-			end
-			game.Players.LocalPlayer.Character.Animate.Disabled = true
-			local Char = game.Players.LocalPlayer.Character
-			local Hum = Char:FindFirstChildOfClass("Humanoid") or Char:FindFirstChildOfClass("AnimationController")
-
-			for i,v in next, Hum:GetPlayingAnimationTracks() do
-				v:AdjustSpeed(0)
-			end
-			speaker.Character.Humanoid:SetStateEnabled(Enum.HumanoidStateType.Climbing,false)
-			speaker.Character.Humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown,false)
-			speaker.Character.Humanoid:SetStateEnabled(Enum.HumanoidStateType.Flying,false)
-			speaker.Character.Humanoid:SetStateEnabled(Enum.HumanoidStateType.Freefall,false)
-			speaker.Character.Humanoid:SetStateEnabled(Enum.HumanoidStateType.GettingUp,false)
-			speaker.Character.Humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping,false)
-			speaker.Character.Humanoid:SetStateEnabled(Enum.HumanoidStateType.Landed,false)
-			speaker.Character.Humanoid:SetStateEnabled(Enum.HumanoidStateType.Physics,false)
-			speaker.Character.Humanoid:SetStateEnabled(Enum.HumanoidStateType.PlatformStanding,false)
-			speaker.Character.Humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll,false)
-			speaker.Character.Humanoid:SetStateEnabled(Enum.HumanoidStateType.Running,false)
-			speaker.Character.Humanoid:SetStateEnabled(Enum.HumanoidStateType.RunningNoPhysics,false)
-			speaker.Character.Humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated,false)
-			speaker.Character.Humanoid:SetStateEnabled(Enum.HumanoidStateType.StrafingNoPhysics,false)
-			speaker.Character.Humanoid:SetStateEnabled(Enum.HumanoidStateType.Swimming,false)
-			speaker.Character.Humanoid:ChangeState(Enum.HumanoidStateType.Swimming)
-		end
-
-
-
-
-		if game:GetService("Players").LocalPlayer.Character:FindFirstChildOfClass("Humanoid").RigType == Enum.HumanoidRigType.R6 then
-
-
-
-			local plr = game.Players.LocalPlayer
-			local torso = plr.Character.Torso
-			local flying = true
-			local deb = true
-			local ctrl = {f = 0, b = 0, l = 0, r = 0}
-			local lastctrl = {f = 0, b = 0, l = 0, r = 0}
-			local maxspeed = 50
-			local speed = 0
-
-
-			local bg = Instance.new("BodyGyro", torso)
-			bg.P = 9e4
-			bg.maxTorque = Vector3.new(9e9, 9e9, 9e9)
-			bg.cframe = torso.CFrame
-			local bv = Instance.new("BodyVelocity", torso)
-			bv.velocity = Vector3.new(0,0.1,0)
-			bv.maxForce = Vector3.new(9e9, 9e9, 9e9)
-			if nowe == true then
-				plr.Character.Humanoid.PlatformStand = true
-			end
-			while nowe == true or game:GetService("Players").LocalPlayer.Character.Humanoid.Health == 0 do
-				game:GetService("RunService").RenderStepped:Wait()
-
-				if ctrl.l + ctrl.r ~= 0 or ctrl.f + ctrl.b ~= 0 then
-					speed = speed+.5+(speed/maxspeed)
-					if speed > maxspeed then
-						speed = maxspeed
-					end
-				elseif not (ctrl.l + ctrl.r ~= 0 or ctrl.f + ctrl.b ~= 0) and speed ~= 0 then
-					speed = speed-1
-					if speed < 0 then
-						speed = 0
-					end
-				end
-				if (ctrl.l + ctrl.r) ~= 0 or (ctrl.f + ctrl.b) ~= 0 then
-					bv.velocity = ((game.Workspace.CurrentCamera.CoordinateFrame.lookVector * (ctrl.f+ctrl.b)) + ((game.Workspace.CurrentCamera.CoordinateFrame * CFrame.new(ctrl.l+ctrl.r,(ctrl.f+ctrl.b)*.2,0).p) - game.Workspace.CurrentCamera.CoordinateFrame.p))*speed
-					lastctrl = {f = ctrl.f, b = ctrl.b, l = ctrl.l, r = ctrl.r}
-				elseif (ctrl.l + ctrl.r) == 0 and (ctrl.f + ctrl.b) == 0 and speed ~= 0 then
-					bv.velocity = ((game.Workspace.CurrentCamera.CoordinateFrame.lookVector * (lastctrl.f+lastctrl.b)) + ((game.Workspace.CurrentCamera.CoordinateFrame * CFrame.new(lastctrl.l+lastctrl.r,(lastctrl.f+lastctrl.b)*.2,0).p) - game.Workspace.CurrentCamera.CoordinateFrame.p))*speed
-				else
-					bv.velocity = Vector3.new(0,0,0)
-				end
-				--	game.Players.LocalPlayer.Character.Animate.Disabled = true
-				bg.cframe = game.Workspace.CurrentCamera.CoordinateFrame * CFrame.Angles(-math.rad((ctrl.f+ctrl.b)*50*speed/maxspeed),0,0)
-			end
-			ctrl = {f = 0, b = 0, l = 0, r = 0}
-			lastctrl = {f = 0, b = 0, l = 0, r = 0}
-			speed = 0
-			bg:Destroy()
-			bv:Destroy()
-			plr.Character.Humanoid.PlatformStand = false
-			game.Players.LocalPlayer.Character.Animate.Disabled = false
-			tpwalking = false
-
-
-
-
-		else
-			local plr = game.Players.LocalPlayer
-			local UpperTorso = plr.Character.UpperTorso
-			local flying = true
-			local deb = true
-			local ctrl = {f = 0, b = 0, l = 0, r = 0}
-			local lastctrl = {f = 0, b = 0, l = 0, r = 0}
-			local maxspeed = 50
-			local speed = 0
-
-
-			local bg = Instance.new("BodyGyro", UpperTorso)
-			bg.P = 9e4
-			bg.maxTorque = Vector3.new(9e9, 9e9, 9e9)
-			bg.cframe = UpperTorso.CFrame
-			local bv = Instance.new("BodyVelocity", UpperTorso)
-			bv.velocity = Vector3.new(0,0.1,0)
-			bv.maxForce = Vector3.new(9e9, 9e9, 9e9)
-			if nowe == true then
-				plr.Character.Humanoid.PlatformStand = true
-			end
-			while nowe == true or game:GetService("Players").LocalPlayer.Character.Humanoid.Health == 0 do
-				wait()
-
-				if ctrl.l + ctrl.r ~= 0 or ctrl.f + ctrl.b ~= 0 then
-					speed = speed+.5+(speed/maxspeed)
-					if speed > maxspeed then
-						speed = maxspeed
-					end
-				elseif not (ctrl.l + ctrl.r ~= 0 or ctrl.f + ctrl.b ~= 0) and speed ~= 0 then
-					speed = speed-1
-					if speed < 0 then
-						speed = 0
-					end
-				end
-				if (ctrl.l + ctrl.r) ~= 0 or (ctrl.f + ctrl.b) ~= 0 then
-					bv.velocity = ((game.Workspace.CurrentCamera.CoordinateFrame.lookVector * (ctrl.f+ctrl.b)) + ((game.Workspace.CurrentCamera.CoordinateFrame * CFrame.new(ctrl.l+ctrl.r,(ctrl.f+ctrl.b)*.2,0).p) - game.Workspace.CurrentCamera.CoordinateFrame.p))*speed
-					lastctrl = {f = ctrl.f, b = ctrl.b, l = ctrl.l, r = ctrl.r}
-				elseif (ctrl.l + ctrl.r) == 0 and (ctrl.f + ctrl.b) == 0 and speed ~= 0 then
-					bv.velocity = ((game.Workspace.CurrentCamera.CoordinateFrame.lookVector * (lastctrl.f+lastctrl.b)) + ((game.Workspace.CurrentCamera.CoordinateFrame * CFrame.new(lastctrl.l+lastctrl.r,(lastctrl.f+lastctrl.b)*.2,0).p) - game.Workspace.CurrentCamera.CoordinateFrame.p))*speed
-				else
-					bv.velocity = Vector3.new(0,0,0)
-				end
-
-				bg.cframe = game.Workspace.CurrentCamera.CoordinateFrame * CFrame.Angles(-math.rad((ctrl.f+ctrl.b)*50*speed/maxspeed),0,0)
-			end
-			ctrl = {f = 0, b = 0, l = 0, r = 0}
-			lastctrl = {f = 0, b = 0, l = 0, r = 0}
-			speed = 0
-			bg:Destroy()
-			bv:Destroy()
-			plr.Character.Humanoid.PlatformStand = false
-			game.Players.LocalPlayer.Character.Animate.Disabled = false
-			tpwalking = false
-
-
-
-		end
-
-
-
-
-
-	end
-
-	-- same tpwalking block, used by the speed slider
-	startTpWalk = function()
-		tpwalking = false
-		for i = 1, speeds do
-			spawn(function()
-
-				local hb = game:GetService("RunService").Heartbeat	
-
-
-				tpwalking = true
-				local chr = game.Players.LocalPlayer.Character
-				local hum = chr and chr:FindFirstChildWhichIsA("Humanoid")
-				while tpwalking and hb:Wait() and chr and hum and hum.Parent do
-					if hum.MoveDirection.Magnitude > 0 then
-						chr:TranslateBy(hum.MoveDirection)
-					end
-				end
-
-			end)
-		end
-	end
-
-	connect(game:GetService("Players").LocalPlayer.CharacterAdded, function(char)
-		wait(0.7)
-		game.Players.LocalPlayer.Character.Humanoid.PlatformStand = false
-		game.Players.LocalPlayer.Character.Animate.Disabled = false
-
-	end)
-
-	-- plus button handler (speed.Text -> slider)
-	flyPlus = function()
-		speeds = speeds + 1
-		if flySlider then flySlider.set(speeds) end
-		if nowe == true then
-
-
-			tpwalking = false
-			for i = 1, speeds do
-				spawn(function()
-
-					local hb = game:GetService("RunService").Heartbeat	
-
-
-					tpwalking = true
-					local chr = game.Players.LocalPlayer.Character
-					local hum = chr and chr:FindFirstChildWhichIsA("Humanoid")
-					while tpwalking and hb:Wait() and chr and hum and hum.Parent do
-						if hum.MoveDirection.Magnitude > 0 then
-							chr:TranslateBy(hum.MoveDirection)
-						end
-					end
-
-				end)
-			end
-		end
-	end
-
-	-- minus button handler (speed.Text -> slider)
-	flyMinus = function()
-		if speeds == 1 then
-			-- 'cannot be less than 1'
-		else
-			speeds = speeds - 1
-			if flySlider then flySlider.set(speeds) end
-			if nowe == true then
-				tpwalking = false
-				for i = 1, speeds do
-					spawn(function()
-
-						local hb = game:GetService("RunService").Heartbeat	
-
-
-						tpwalking = true
-						local chr = game.Players.LocalPlayer.Character
-						local hum = chr and chr:FindFirstChildWhichIsA("Humanoid")
-						while tpwalking and hb:Wait() and chr and hum and hum.Parent do
-							if hum.MoveDirection.Magnitude > 0 then
-								chr:TranslateBy(hum.MoveDirection)
-							end
-						end
-
-					end)
-				end
-			end
-		end
-	end
-end
-
--- up / down buttons -> hold the bind key (same CFrame.new(0, +-1, 0) step)
-local function flyUpStart()
-	if not nowe then return end
-	local token = {}
-	tis = token
-	while tis == token do
-		wait()
-		game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame * CFrame.new(0,1,0)
-	end
-end
-
-local function flyDownStart()
-	if not nowe then return end
-	local token = {}
-	dis = token
-	while dis == token do
-		wait()
-		game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame * CFrame.new(0,-1,0)
-	end
-end
-
-connect(UserInputService.InputEnded, function(input)
-	if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
-	if binds["flyup"] and input.KeyCode == binds["flyup"] then tis = nil end
-	if binds["flydown"] and input.KeyCode == binds["flydown"] then dis = nil end
-end)
-
--- after respawn the old flight is gone: reset the state and the toggle
-connect(player.CharacterAdded, function()
-	tis = nil
-	dis = nil
-	if nowe then
-		nowe = false
-		tpwalking = false
-		if flyToggle then flyToggle.set(false) end
-	end
-end)
-
--- camera lock while flying: the character always faces where the camera looks
--- (same orientation the BodyGyro in the fly script aims for, applied every frame)
-connect(RunService.RenderStepped, function()
-	if not nowe then return end
-	local chr = player.Character
-	local root = chr and chr:FindFirstChild("HumanoidRootPart")
-	local cam = workspace.CurrentCamera
-	if root and cam then
-		root.CFrame = CFrame.new(root.Position) * (cam.CFrame - cam.CFrame.Position)
-	end
-end)
-
-local lightSaved
-local function setFullbright(on)
-    if on then
-        if lightSaved then return end
-        lightSaved = {
-            Brightness = Lighting.Brightness,
-            ClockTime = Lighting.ClockTime,
-            FogEnd = Lighting.FogEnd,
-            GlobalShadows = Lighting.GlobalShadows,
-            Ambient = Lighting.Ambient,
-            OutdoorAmbient = Lighting.OutdoorAmbient,
-        }
-        pcall(function()
-            Lighting.Brightness = 2
-            Lighting.ClockTime = 14
-            Lighting.FogEnd = 100000
-            Lighting.GlobalShadows = false
-            Lighting.Ambient = Color3.fromRGB(190, 190, 190)
-            Lighting.OutdoorAmbient = Color3.fromRGB(190, 190, 190)
-        end)
-    elseif lightSaved then
-        for k, v in pairs(lightSaved) do
-            pcall(function() Lighting[k] = v end)
-        end
-        lightSaved = nil
-    end
-end
-
-local gui = new("ScreenGui", {
-    Name = "AstralMenu",
-    ResetOnSpawn = false,
-    ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
-})
+local gui = Instance.new("ScreenGui")
+gui.Name = "AstralEngine_Noclip"
+gui.ResetOnSpawn = false
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
 local function mount()
     local targets = {
@@ -658,693 +55,222 @@ local function mount()
 end
 mount()
 
-local main = new("Frame", {
-    Name = "Main",
-    Size = UDim2.fromOffset(560, 380),
-    Position = UDim2.fromScale(0.5, 0.5),
-    AnchorPoint = Vector2.new(0.5, 0.5),
-    BackgroundColor3 = THEME.bg,
-    BorderSizePixel = 0,
-    Active = true,
-}, gui)
-corner(main, 14)
-new("UIGradient", {
-    Color = ColorSequence.new(Color3.fromRGB(28, 20, 48), THEME.bg),
-    Rotation = 60,
-}, main)
+local main = Instance.new("TextButton")
+main.Name = "Toggle"
+main.Size = UDim2.fromOffset(170, 60)
+main.Position = UDim2.new(0.5, -85, 0.5, -30)
+main.BackgroundColor3 = COLORS.off.bg
+main.AutoButtonColor = false
+main.Text = ""
+main.BorderSizePixel = 0
+main.Active = true
+main.Parent = gui
+Instance.new("UICorner", main).CornerRadius = UDim.new(0, 14)
 
-local scale = new("UIScale", {Scale = 0}, main)
+local scale = Instance.new("UIScale", main)
+scale.Scale = 0
 
-local mainStroke = new("UIStroke", {
-    Thickness = 2,
-    ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
-    Color = Color3.new(1, 1, 1),
-}, main)
-local strokeGrad = new("UIGradient", {
-    Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, THEME.accent),
-        ColorSequenceKeypoint.new(0.5, THEME.accent2),
-        ColorSequenceKeypoint.new(1, THEME.accent),
-    }),
-}, mainStroke)
+local stroke = Instance.new("UIStroke", main)
+stroke.Thickness = 2
+stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+local strokeGrad = Instance.new("UIGradient", stroke)
 
-local topbar = new("Frame", {
-    Size = UDim2.new(1, 0, 0, 44),
-    BackgroundTransparency = 1,
-    Active = true,
-}, main)
+local bgGlow = Instance.new("Frame", main)
+bgGlow.Name = "BackgroundGlow"
+bgGlow.Size = UDim2.new(1, 0, 1, 0)
+bgGlow.BackgroundColor3 = Color3.new(1, 1, 1)
+bgGlow.BackgroundTransparency = 0.75
+bgGlow.BorderSizePixel = 0
+bgGlow.ZIndex = 1
+Instance.new("UICorner", bgGlow).CornerRadius = UDim.new(0, 14)
+local bgGrad = Instance.new("UIGradient", bgGlow)
+bgGrad.Transparency = NumberSequence.new({
+    NumberSequenceKeypoint.new(0, 0.2),
+    NumberSequenceKeypoint.new(0.5, 0.85),
+    NumberSequenceKeypoint.new(1, 0.2),
+})
 
-local title = new("TextLabel", {
-    BackgroundTransparency = 1,
-    Position = UDim2.fromOffset(18, 0),
-    Size = UDim2.fromOffset(110, 44),
-    Font = Enum.Font.GothamBlack,
-    TextSize = 20,
-    TextXAlignment = Enum.TextXAlignment.Left,
-    TextColor3 = Color3.new(1, 1, 1),
-    Text = "ASTRAL",
-}, topbar)
-new("UIGradient", {Color = ColorSequence.new(THEME.accent, THEME.accent2)}, title)
-
-new("TextLabel", {
-    BackgroundTransparency = 1,
-    Position = UDim2.fromOffset(112, 3),
-    Size = UDim2.fromOffset(200, 44),
-    Font = Enum.Font.GothamMedium,
-    TextSize = 12,
-    TextXAlignment = Enum.TextXAlignment.Left,
-    TextColor3 = THEME.dim,
-    Text = "menu  |  custom keybinds",
-}, topbar)
-
-local closeBtn = new("TextButton", {
-    Size = UDim2.fromOffset(28, 28),
-    Position = UDim2.new(1, -42, 0, 8),
-    BackgroundColor3 = THEME.item,
-    AutoButtonColor = false,
-    Text = "X",
-    Font = Enum.Font.GothamBold,
-    TextSize = 13,
-    TextColor3 = THEME.dim,
-}, topbar)
-corner(closeBtn, 8)
-
-connect(closeBtn.MouseEnter, function()
-    tween(closeBtn, {BackgroundColor3 = THEME.danger, TextColor3 = Color3.new(1, 1, 1)}, 0.15)
-end)
-connect(closeBtn.MouseLeave, function()
-    tween(closeBtn, {BackgroundColor3 = THEME.item, TextColor3 = THEME.dim}, 0.15)
-end)
-
-local topLine = new("Frame", {
-    Position = UDim2.fromOffset(10, 44),
-    Size = UDim2.new(1, -20, 0, 2),
-    BackgroundColor3 = Color3.new(1, 1, 1),
-    BorderSizePixel = 0,
-}, main)
-corner(topLine, 1)
-new("UIGradient", {
-    Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, THEME.accent),
-        ColorSequenceKeypoint.new(0.5, THEME.accent2),
-        ColorSequenceKeypoint.new(1, THEME.accent),
-    }),
-}, topLine)
-
-local sidebar = new("Frame", {
-    Position = UDim2.fromOffset(10, 56),
-    Size = UDim2.new(0, 128, 1, -96),
-    BackgroundColor3 = THEME.panel,
-    BorderSizePixel = 0,
-}, main)
-corner(sidebar, 10)
-new("UIPadding", {
-    PaddingTop = UDim.new(0, 8),
-    PaddingLeft = UDim.new(0, 8),
-    PaddingRight = UDim.new(0, 8),
-}, sidebar)
-new("UIListLayout", {
-    Padding = UDim.new(0, 6),
-    SortOrder = Enum.SortOrder.LayoutOrder,
-}, sidebar)
-
-local content = new("Frame", {
-    Position = UDim2.fromOffset(148, 56),
-    Size = UDim2.new(1, -158, 1, -96),
-    BackgroundTransparency = 1,
-}, main)
-
-new("TextLabel", {
-    BackgroundTransparency = 1,
-    Position = UDim2.new(0, 14, 1, -30),
-    Size = UDim2.new(1, -28, 0, 20),
-    Font = Enum.Font.GothamMedium,
-    TextSize = 11,
-    TextXAlignment = Enum.TextXAlignment.Left,
-    TextColor3 = THEME.dim,
-    Text = "Click a key box to rebind  |  Backspace clears",
-}, main)
-
-local tabs = {}
-
-local function selectTab(name)
-    for n, t in pairs(tabs) do
-        local active = n == name
-        t.page.Visible = active
-        tween(t.button, {BackgroundTransparency = active and 0 or 1}, 0.2)
-        tween(t.label, {TextColor3 = active and THEME.text or THEME.dim}, 0.2)
-        tween(t.bar, {BackgroundTransparency = active and 0 or 1}, 0.2)
-    end
-end
-
-local function addTab(name)
-    local btn = new("TextButton", {
-        Size = UDim2.new(1, 0, 0, 36),
-        BackgroundColor3 = THEME.item,
-        BackgroundTransparency = 1,
-        AutoButtonColor = false,
-        Text = "",
-        LayoutOrder = nextOrder(),
-    }, sidebar)
-    corner(btn, 8)
-
-    local bar = new("Frame", {
-        Size = UDim2.fromOffset(3, 18),
-        Position = UDim2.new(0, 0, 0.5, -9),
-        BackgroundColor3 = THEME.accent,
-        BackgroundTransparency = 1,
-        BorderSizePixel = 0,
-    }, btn)
-    corner(bar, 2)
-
-    local label = new("TextLabel", {
-        BackgroundTransparency = 1,
-        Position = UDim2.fromOffset(14, 0),
-        Size = UDim2.new(1, -14, 1, 0),
-        Font = Enum.Font.GothamBold,
-        TextSize = 14,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        TextColor3 = THEME.dim,
-        Text = name,
-    }, btn)
-
-    local page = new("ScrollingFrame", {
-        Size = UDim2.fromScale(1, 1),
-        BackgroundTransparency = 1,
-        BorderSizePixel = 0,
-        ScrollBarThickness = 3,
-        ScrollBarImageColor3 = THEME.accent,
-        CanvasSize = UDim2.new(),
-        AutomaticCanvasSize = Enum.AutomaticSize.Y,
-        Visible = false,
-    }, content)
-    new("UIListLayout", {
-        Padding = UDim.new(0, 8),
-        SortOrder = Enum.SortOrder.LayoutOrder,
-    }, page)
-    new("UIPadding", {
-        PaddingRight = UDim.new(0, 6),
-        PaddingTop = UDim.new(0, 2),
-        PaddingBottom = UDim.new(0, 6),
-    }, page)
-
-    tabs[name] = {button = btn, label = label, bar = bar, page = page}
-
-    connect(btn.MouseEnter, function()
-        if not page.Visible then tween(label, {TextColor3 = THEME.text}, 0.15) end
-    end)
-    connect(btn.MouseLeave, function()
-        if not page.Visible then tween(label, {TextColor3 = THEME.dim}, 0.15) end
-    end)
-    connect(btn.Activated, function()
-        selectTab(name)
-    end)
-
-    return page
-end
-
-local function addSection(page, text)
-    new("TextLabel", {
-        Size = UDim2.new(1, 0, 0, 18),
-        BackgroundTransparency = 1,
-        Font = Enum.Font.GothamBold,
-        TextSize = 11,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        TextColor3 = THEME.dim,
-        Text = string.upper(text),
-        LayoutOrder = nextOrder(),
-    }, page)
-end
-
-local function addInfo(page, text, height)
-    local row = new("Frame", {
-        Size = UDim2.new(1, 0, 0, height or 60),
-        BackgroundColor3 = THEME.item,
-        BorderSizePixel = 0,
-        LayoutOrder = nextOrder(),
-    }, page)
-    corner(row, 8)
-    new("TextLabel", {
-        BackgroundTransparency = 1,
-        Position = UDim2.fromOffset(14, 0),
-        Size = UDim2.new(1, -28, 1, 0),
-        Font = Enum.Font.Gotham,
-        TextSize = 13,
-        TextWrapped = true,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        TextYAlignment = Enum.TextYAlignment.Center,
-        TextColor3 = THEME.dim,
-        Text = text,
-    }, row)
-end
-
-local function addToggle(page, text, default, callback, bindId, defaultKey)
-    local row = new("Frame", {
-        Size = UDim2.new(1, 0, 0, 40),
-        BackgroundColor3 = THEME.item,
-        BorderSizePixel = 0,
-        LayoutOrder = nextOrder(),
-    }, page)
-    corner(row, 8)
-
-    new("TextLabel", {
-        BackgroundTransparency = 1,
-        Position = UDim2.fromOffset(14, 0),
-        Size = UDim2.new(1, bindId and -158 or -80, 1, 0),
-        Font = Enum.Font.GothamMedium,
-        TextSize = 14,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        TextColor3 = THEME.text,
-        Text = text,
-    }, row)
-
-    local track = new("Frame", {
-        Size = UDim2.fromOffset(44, 22),
-        Position = UDim2.new(1, -58, 0.5, -11),
-        BackgroundColor3 = THEME.off,
-        BorderSizePixel = 0,
-    }, row)
-    corner(track, 11)
-
-    local knob = new("Frame", {
-        Size = UDim2.fromOffset(16, 16),
-        Position = UDim2.fromOffset(3, 3),
-        BackgroundColor3 = Color3.new(1, 1, 1),
-        BorderSizePixel = 0,
-    }, track)
-    corner(knob, 8)
-
-    local click = new("TextButton", {
-        Size = UDim2.fromScale(1, 1),
-        BackgroundTransparency = 1,
-        Text = "",
-    }, row)
-
-    local state = default and true or false
-    local obj = {}
-
-    local function render()
-        tween(track, {BackgroundColor3 = state and THEME.accent or THEME.off}, 0.2)
-        tween(knob, {Position = state and UDim2.fromOffset(25, 3) or UDim2.fromOffset(3, 3)}, 0.2, Enum.EasingStyle.Back)
-    end
-
-    function obj.set(v)
-        state = v and true or false
-        render()
-        pcall(callback, state)
-    end
-
-    function obj.get()
-        return state
-    end
-
-    connect(click.Activated, function()
-        obj.set(not state)
-    end)
-
-    if bindId then
-        registerBind(bindId, defaultKey, function()
-            obj.set(not state)
-        end)
-        makeBindButton(row, bindId, UDim2.new(1, -136, 0.5, -12))
-    end
-
-    render()
-    return obj
-end
-
-local function addSlider(page, text, min, max, default, callback)
-    local row = new("Frame", {
-        Size = UDim2.new(1, 0, 0, 56),
-        BackgroundColor3 = THEME.item,
-        BorderSizePixel = 0,
-        LayoutOrder = nextOrder(),
-    }, page)
-    corner(row, 8)
-
-    new("TextLabel", {
-        BackgroundTransparency = 1,
-        Position = UDim2.fromOffset(14, 8),
-        Size = UDim2.new(1, -100, 0, 18),
-        Font = Enum.Font.GothamMedium,
-        TextSize = 14,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        TextColor3 = THEME.text,
-        Text = text,
-    }, row)
-
-    local valueLabel = new("TextLabel", {
-        BackgroundTransparency = 1,
-        Position = UDim2.new(1, -84, 0, 8),
-        Size = UDim2.fromOffset(70, 18),
-        Font = Enum.Font.GothamBold,
-        TextSize = 14,
-        TextXAlignment = Enum.TextXAlignment.Right,
-        TextColor3 = THEME.accent2,
-        Text = tostring(default),
-    }, row)
-
-    local bar = new("Frame", {
-        Position = UDim2.new(0, 14, 0, 38),
-        Size = UDim2.new(1, -28, 0, 6),
-        BackgroundColor3 = THEME.off,
-        BorderSizePixel = 0,
-    }, row)
-    corner(bar, 3)
-
-    local fill = new("Frame", {
-        Size = UDim2.new(0, 0, 1, 0),
-        BackgroundColor3 = Color3.new(1, 1, 1),
-        BorderSizePixel = 0,
-    }, bar)
-    corner(fill, 3)
-    new("UIGradient", {Color = ColorSequence.new(THEME.accent, THEME.accent2)}, fill)
-
-    local knob = new("Frame", {
-        Size = UDim2.fromOffset(14, 14),
-        BackgroundColor3 = Color3.new(1, 1, 1),
-        BorderSizePixel = 0,
-    }, bar)
-    corner(knob, 7)
-
-    local hit = new("TextButton", {
-        Position = UDim2.fromOffset(0, -10),
-        Size = UDim2.new(1, 0, 0, 26),
-        BackgroundTransparency = 1,
-        Text = "",
-    }, bar)
-
-    local value = default
-
-    local function render(v)
-        local frac = (v - min) / (max - min)
-        fill.Size = UDim2.new(frac, 0, 1, 0)
-        knob.Position = UDim2.new(frac, -7, 0.5, -7)
-        valueLabel.Text = tostring(v)
-    end
-
-    local dragging = false
-
-    local function fromX(x)
-        local rel = math.clamp((x - bar.AbsolutePosition.X) / math.max(bar.AbsoluteSize.X, 1), 0, 1)
-        local v = math.floor(min + (max - min) * rel + 0.5)
-        if v ~= value then
-            value = v
-            render(v)
-            pcall(callback, v)
-        end
-    end
-
-    connect(hit.InputBegan, function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1
-            or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true
-            fromX(input.Position.X)
-        end
-    end)
-
-    connect(UserInputService.InputChanged, function(input)
-        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
-            or input.UserInputType == Enum.UserInputType.Touch) then
-            fromX(input.Position.X)
-        end
-    end)
-
-    connect(UserInputService.InputEnded, function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1
-            or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = false
-        end
-    end)
-
-    render(default)
-
-    return {
-        set = function(v)
-            value = v
-            render(v)
-        end,
+local particles = {}
+local rng = Random.new()
+for i = 1, 10 do
+    local p = Instance.new("Frame", main)
+    local s = rng:NextInteger(2, 4)
+    p.Size = UDim2.fromOffset(s, s)
+    p.BorderSizePixel = 0
+    p.ZIndex = 2
+    Instance.new("UICorner", p).CornerRadius = UDim.new(1, 0)
+    particles[i] = {
+        frame = p,
+        x = rng:NextNumber(0.12, 0.92),
+        speed = rng:NextNumber(0.12, 0.3),
+        offset = rng:NextNumber(0, 1),
     }
 end
 
-local function addButton(page, text, callback)
-    local btn = new("TextButton", {
-        Size = UDim2.new(1, 0, 0, 38),
-        BackgroundColor3 = THEME.item,
-        AutoButtonColor = false,
-        Text = text,
-        Font = Enum.Font.GothamMedium,
-        TextSize = 14,
-        TextColor3 = THEME.text,
-        LayoutOrder = nextOrder(),
-    }, page)
-    corner(btn, 8)
+local dot = Instance.new("Frame", main)
+dot.Size = UDim2.fromOffset(12, 12)
+dot.Position = UDim2.new(0, 16, 0.5, -6)
+dot.BorderSizePixel = 0
+dot.ZIndex = 3
+Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
 
-    connect(btn.MouseEnter, function()
-        tween(btn, {BackgroundColor3 = THEME.hover}, 0.15)
-    end)
-    connect(btn.MouseLeave, function()
-        tween(btn, {BackgroundColor3 = THEME.item}, 0.15)
-    end)
-    connect(btn.Activated, function()
-        btn.BackgroundColor3 = THEME.accent
-        tween(btn, {BackgroundColor3 = THEME.hover}, 0.3)
-        pcall(callback)
-    end)
+local ring = Instance.new("Frame", main)
+ring.Size = UDim2.fromOffset(20, 20)
+ring.Position = UDim2.new(0, 12, 0.5, -10)
+ring.BackgroundTransparency = 1
+ring.BorderSizePixel = 0
+ring.ZIndex = 3
+Instance.new("UICorner", ring).CornerRadius = UDim.new(1, 0)
+local ringStroke = Instance.new("UIStroke", ring)
+ringStroke.Thickness = 2
+ringStroke.Transparency = 1
+
+local title = Instance.new("TextLabel", main)
+title.BackgroundTransparency = 1
+title.Position = UDim2.fromOffset(42, 11)
+title.Size = UDim2.fromOffset(120, 18)
+title.Font = Enum.Font.GothamBold
+title.TextSize = 16
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.TextColor3 = Color3.new(1, 1, 1)
+title.Text = "NOCLIP"
+title.ZIndex = 3
+
+local status = Instance.new("TextLabel", main)
+status.BackgroundTransparency = 1
+status.Position = UDim2.fromOffset(42, 31)
+status.Size = UDim2.fromOffset(120, 16)
+status.Font = Enum.Font.GothamMedium
+status.TextSize = 11
+status.TextXAlignment = Enum.TextXAlignment.Left
+status.ZIndex = 3
+
+local function applyVisual(state)
+    local pal = state and COLORS.on or COLORS.off
+    currentPal = pal
+    strokeGrad.Color = ColorSequence.new(pal.a, pal.b)
+    bgGrad.Color = ColorSequence.new(pal.a, pal.b)
+    ringStroke.Color = pal.a
+    status.Text = state and "ENABLED" or "DISABLED"
+    tween(main, {BackgroundColor3 = pal.bg}, 0.35)
+    tween(dot, {BackgroundColor3 = pal.a}, 0.35)
+    tween(status, {TextColor3 = pal.a}, 0.35)
+    stroke.Thickness = 4
+    tween(stroke, {Thickness = 2}, 0.4)
 end
 
-local opened = true
-
-local function setOpen(v)
-    opened = v
-    if v then
-        main.Visible = true
-        tween(scale, {Scale = 1}, 0.35, Enum.EasingStyle.Back)
-    else
-        tween(scale, {Scale = 0}, 0.2)
-        task.delay(0.22, function()
-            if not opened then main.Visible = false end
-        end)
+local function setNoclip(state)
+    noclip = state
+    applyVisual(state)
+    if not state then
+        for part, value in pairs(original) do
+            if part and part.Parent then
+                part.CanCollide = value
+            end
+        end
+        original = {}
     end
 end
 
-local pageMove = addTab("Movement")
-local pagePlayer = addTab("Player")
-local pageVisual = addTab("Visual")
-local pageMisc = addTab("Misc")
-
-addSection(pageMove, "Movement")
-
-addToggle(pageMove, "Noclip", false, function(v)
-    S.noclip = v
-    if not v then restoreNoclip() end
-end, "noclip", Enum.KeyCode.N)
-
-flyToggle = addToggle(pageMove, "Fly", false, function(v)
-    if not v then
-        tis = nil
-        dis = nil
-    end
-    if v ~= nowe then
-        spawn(flyHandler)
-    end
-end, "fly", Enum.KeyCode.F)
-
-flySlider = addSlider(pageMove, "Fly speed", 1, 50, speeds, function(v)
-    speeds = v
-    if nowe == true then
-        startTpWalk()
-    end
-end)
-
-addBindRow(pageMove, "Fly speed +", "flyplus", nil, function()
-    if speeds >= 50 then return end
-    flyPlus()
-end)
-
-addBindRow(pageMove, "Fly speed -", "flyminus", nil, function()
-    flyMinus()
-end)
-
-addBindRow(pageMove, "Fly up (hold)", "flyup", Enum.KeyCode.Space, function()
-    spawn(flyUpStart)
-end)
-
-addBindRow(pageMove, "Fly down (hold)", "flydown", Enum.KeyCode.LeftShift, function()
-    spawn(flyDownStart)
-end)
-
-addToggle(pageMove, "Speed hack", false, function(v)
-    local hum = getHum()
-    if v then
-        if hum then defaults.walk = hum.WalkSpeed end
-        S.speed = true
-    else
-        S.speed = false
-        if hum then hum.WalkSpeed = defaults.walk end
-    end
-end, "speed")
-
-addSlider(pageMove, "Walk speed", 16, 250, S.speedVal, function(v)
-    S.speedVal = v
-end)
-
-addToggle(pageMove, "Jump power", false, function(v)
-    local hum = getHum()
-    if v then
-        if hum then
-            defaults.jump = hum.JumpPower
-            defaults.useJumpPower = hum.UseJumpPower
-        end
-        S.jump = true
-    else
-        S.jump = false
-        if hum then
-            hum.UseJumpPower = defaults.useJumpPower
-            hum.JumpPower = defaults.jump
-        end
-    end
-end, "jump")
-
-addSlider(pageMove, "Jump value", 50, 300, S.jumpVal, function(v)
-    S.jumpVal = v
-end)
-
-addToggle(pageMove, "Infinite jump", false, function(v)
-    S.infJump = v
-end, "infjump")
-
-addSection(pagePlayer, "Player")
-
-local gravitySlider = addSlider(pagePlayer, "Gravity", 0, 400, math.floor(defaultGravity + 0.5), function(v)
-    workspace.Gravity = v
-end)
-
-addButton(pagePlayer, "Reset gravity", function()
-    workspace.Gravity = defaultGravity
-    gravitySlider.set(math.floor(defaultGravity + 0.5))
-end)
-
-addToggle(pagePlayer, "Click TP (Ctrl+click)", false, function(v)
-    S.clickTp = v
-end, "clicktp")
-
-addToggle(pagePlayer, "Anti AFK", false, function(v)
-    S.antiAfk = v
-end, "antiafk")
-
-addButton(pagePlayer, "Reset character", function()
-    local hum = getHum()
-    if hum then hum.Health = 0 end
-end)
-
-addSection(pageVisual, "Visual")
-
-addToggle(pageVisual, "Fullbright", false, function(v)
-    setFullbright(v)
-end, "fullbright")
-
-local fovSlider = addSlider(pageVisual, "Field of view", 40, 120, 70, function(v)
-    S.fov = v
-end)
-
-addButton(pageVisual, "Reset FOV", function()
-    S.fov = nil
-    local cam = workspace.CurrentCamera
-    if cam then cam.FieldOfView = 70 end
-    fovSlider.set(70)
-end)
-
-addSection(pageMisc, "Misc")
-
-addBindRow(pageMisc, "Menu key", "menu", Enum.KeyCode.K, function()
-    setOpen(not opened)
-end)
-
-addInfo(pageMisc, "Click a key box, then press the key you want.\nEsc cancels, Backspace clears the bind.\nFly: hold the Up / Down keys to rise / sink.", 72)
-
-addButton(pageMisc, "Rejoin server", function()
-    TeleportService:Teleport(game.PlaceId, player)
-end)
-
-addButton(pageMisc, "Unload menu", function()
-    if env.__AstralCleanup then env.__AstralCleanup() end
-end)
-
-selectTab("Movement")
-
-connect(closeBtn.Activated, function()
-    setOpen(false)
-end)
-
+applyVisual(false)
 tween(scale, {Scale = 1}, 0.5, Enum.EasingStyle.Back)
 
-local dragging, dragStart, startPos = false, nil, nil
+connect(RunService.RenderStepped, function()
+    local t = os.clock()
+    strokeGrad.Rotation = (t * 90) % 360
+    bgGrad.Rotation = (t * (noclip and 60 or 25)) % 360
 
-connect(topbar.InputBegan, function(input)
+    local speedMul = noclip and 2.2 or 1
+    for _, p in ipairs(particles) do
+        local frac = (t * p.speed * speedMul + p.offset) % 1
+        p.frame.Position = UDim2.new(p.x, 0, 0.9 - frac * 0.8, 0)
+        p.frame.BackgroundColor3 = currentPal.a
+        p.frame.BackgroundTransparency = 0.25 + frac * 0.75
+    end
+
+    if noclip then
+        local k = (math.sin(t * 4) + 1) / 2
+        local size = 18 + k * 10
+        ring.Size = UDim2.fromOffset(size, size)
+        ring.Position = UDim2.new(0, 22 - size / 2, 0.5, -size / 2)
+        ringStroke.Transparency = 0.2 + k * 0.7
+    else
+        ringStroke.Transparency = 1
+    end
+end)
+
+local dragging, moved, hovering = false, false, false
+local dragInput, dragStart, startPos
+
+connect(main.MouseEnter, function()
+    hovering = true
+    if not dragging then tween(scale, {Scale = 1.05}, 0.15) end
+end)
+connect(main.MouseLeave, function()
+    hovering = false
+    if not dragging then tween(scale, {Scale = 1}, 0.15) end
+end)
+
+connect(main.InputBegan, function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1
         or input.UserInputType == Enum.UserInputType.Touch then
         dragging = true
+        moved = false
+        dragInput = input
         dragStart = input.Position
         startPos = main.Position
+        tween(scale, {Scale = 0.93}, 0.08)
+    end
+end)
+
+connect(main.InputChanged, function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement
+        or input.UserInputType == Enum.UserInputType.Touch then
+        dragInput = input
     end
 end)
 
 connect(UserInputService.InputChanged, function(input)
-    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
-        or input.UserInputType == Enum.UserInputType.Touch) then
-        local d = input.Position - dragStart
-        main.Position = UDim2.new(
-            startPos.X.Scale, startPos.X.Offset + d.X,
-            startPos.Y.Scale, startPos.Y.Offset + d.Y
-        )
-    end
-end)
-
-connect(UserInputService.InputEnded, function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1
-        or input.UserInputType == Enum.UserInputType.Touch then
-        dragging = false
-    end
-end)
-
-local mouse = player:GetMouse()
-
-connect(UserInputService.InputBegan, function(input, processed)
-    if processed or not S.clickTp then return end
-    if input.UserInputType == Enum.UserInputType.MouseButton1
-        and UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
-        local root = getRoot()
-        if root and mouse.Hit then
-            root.CFrame = CFrame.new(mouse.Hit.Position + Vector3.new(0, 3, 0))
+    if dragging and input == dragInput then
+        local delta = input.Position - dragStart
+        if delta.Magnitude > 8 then moved = true end
+        if moved then
+            main.Position = UDim2.new(
+                startPos.X.Scale, startPos.X.Offset + delta.X,
+                startPos.Y.Scale, startPos.Y.Offset + delta.Y
+            )
         end
     end
 end)
 
-connect(UserInputService.JumpRequest, function()
-    if S.infJump then
-        local hum = getHum()
-        if hum then hum:ChangeState(Enum.HumanoidStateType.Jumping) end
+connect(UserInputService.InputEnded, function(input)
+    if dragging and (input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch) then
+        dragging = false
+        tween(scale, {Scale = hovering and 1.05 or 1}, 0.25, Enum.EasingStyle.Back)
     end
 end)
 
-connect(player.Idled, function()
-    if S.antiAfk then
-        pcall(function()
-            local vu = game:GetService("VirtualUser")
-            vu:CaptureController()
-            vu:ClickButton2(Vector2.new())
-        end)
+connect(main.Activated, function()
+    if not moved then
+        setNoclip(not noclip)
+    end
+end)
+
+connect(UserInputService.InputBegan, function(input, processed)
+    if processed then return end
+    if input.KeyCode == Enum.KeyCode.N then
+        setNoclip(not noclip)
     end
 end)
 
 connect(RunService.Stepped, function()
     local char = player.Character
-    if S.noclip and char then
+    if noclip and char then
         for _, part in ipairs(char:GetDescendants()) do
             if part:IsA("BasePart") then
-                if noclipOriginal[part] == nil then
-                    noclipOriginal[part] = part.CanCollide
+                if original[part] == nil then
+                    original[part] = part.CanCollide
                 end
                 part.CanCollide = false
             end
@@ -1352,52 +278,15 @@ connect(RunService.Stepped, function()
     end
 end)
 
-connect(RunService.Heartbeat, function(dt)
-    local hum = getHum()
-
-    if hum then
-        if S.speed then
-            hum.WalkSpeed = S.speedVal
-        end
-        if S.jump then
-            hum.UseJumpPower = true
-            hum.JumpPower = S.jumpVal
+env.__NoclipCleanup = function()
+    noclip = false
+    for part, value in pairs(original) do
+        if part and part.Parent then
+            part.CanCollide = value
         end
     end
-end)
-
-connect(RunService.RenderStepped, function()
-    strokeGrad.Rotation = (os.clock() * 80) % 360
-    if S.fov then
-        local cam = workspace.CurrentCamera
-        if cam then cam.FieldOfView = S.fov end
-    end
-end)
-
-env.__AstralCleanup = function()
-    S.noclip = false
-    restoreNoclip()
-    tis = nil
-    dis = nil
-    if nowe then spawn(flyHandler) end
-
-    local hum = getHum()
-    if hum then
-        if S.speed then hum.WalkSpeed = defaults.walk end
-        if S.jump then
-            hum.UseJumpPower = defaults.useJumpPower
-            hum.JumpPower = defaults.jump
-        end
-    end
-    S.speed = false
-    S.jump = false
-
-    setFullbright(false)
-    workspace.Gravity = defaultGravity
-
     for _, c in ipairs(connections) do
         pcall(function() c:Disconnect() end)
     end
     gui:Destroy()
-    env.__AstralCleanup = nil
 end
