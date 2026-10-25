@@ -1,8 +1,10 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 
 local player = Players.LocalPlayer
 local noclip = false
+local original = {}
 
 local gui = Instance.new("ScreenGui")
 gui.Name = "NoclipGui"
@@ -17,22 +19,76 @@ button.TextColor3 = Color3.new(1, 1, 1)
 button.Font = Enum.Font.GothamBold
 button.TextSize = 18
 button.Text = "Noclip: OFF"
+button.Active = true
+button.AutoButtonColor = false
 button.Parent = gui
 
 Instance.new("UICorner", button).CornerRadius = UDim.new(0, 8)
 
-button.Activated:Connect(function()
-    noclip = not noclip
+local function setNoclip(state)
+    noclip = state
     button.Text = noclip and "Noclip: ON" or "Noclip: OFF"
     button.BackgroundColor3 = noclip
         and Color3.fromRGB(50, 170, 80)
         or Color3.fromRGB(170, 50, 50)
+
+    if not noclip then
+        for part, value in pairs(original) do
+            if part and part.Parent then
+                part.CanCollide = value
+            end
+        end
+        original = {}
+    end
+end
+
+-- перетаскивание + нажатие
+local dragging = false
+local moved = false
+local dragStart, startPos
+
+button.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        moved = false
+        dragStart = input.Position
+        startPos = button.Position
+
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+                if not moved then
+                    setNoclip(not noclip)
+                end
+            end
+        end)
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
+        or input.UserInputType == Enum.UserInputType.Touch) then
+        local delta = input.Position - dragStart
+        if delta.Magnitude > 8 then
+            moved = true
+        end
+        if moved then
+            button.Position = UDim2.new(
+                startPos.X.Scale, startPos.X.Offset + delta.X,
+                startPos.Y.Scale, startPos.Y.Offset + delta.Y
+            )
+        end
+    end
 end)
 
 RunService.Stepped:Connect(function()
     if noclip and player.Character then
         for _, part in ipairs(player.Character:GetDescendants()) do
             if part:IsA("BasePart") then
+                if original[part] == nil then
+                    original[part] = part.CanCollide
+                end
                 part.CanCollide = false
             end
         end
