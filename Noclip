@@ -217,7 +217,7 @@ end)
 local S = {
     noclip = false,
     fly = false,
-    flySpeed = 60,
+    flySpeed = 3,
     speed = false,
     speedVal = 50,
     jump = false,
@@ -226,7 +226,6 @@ local S = {
     clickTp = false,
     antiAfk = false,
     fov = nil,
-    flyFollowCam = true,
 }
  
 local defaults = {walk = 16, jump = 50, useJumpPower = true}
@@ -252,123 +251,40 @@ local function restoreNoclip()
     noclipOriginal = {}
 end
  
-local FLY_STATES = {
-    Enum.HumanoidStateType.Climbing,
-    Enum.HumanoidStateType.FallingDown,
-    Enum.HumanoidStateType.Flying,
-    Enum.HumanoidStateType.Freefall,
-    Enum.HumanoidStateType.GettingUp,
-    Enum.HumanoidStateType.Jumping,
-    Enum.HumanoidStateType.Landed,
-    Enum.HumanoidStateType.Physics,
-    Enum.HumanoidStateType.PlatformStanding,
-    Enum.HumanoidStateType.Ragdoll,
-    Enum.HumanoidStateType.Running,
-    Enum.HumanoidStateType.RunningNoPhysics,
-    Enum.HumanoidStateType.Seated,
-    Enum.HumanoidStateType.StrafingNoPhysics,
-    Enum.HumanoidStateType.Swimming,
-}
- 
 -- ============================================================
--- TP-FLY: переписанный fly из второго кода.
--- Логика: пока fly включён — каждый Heartbeat делаем N шагов
--- chr:TranslateBy(hum.MoveDirection). N = S.flySpeed (как speeds).
+-- ВСТАВЛЕННЫЙ TP-ФЛАЙ (из твоего кода, без менюшки)
 -- ============================================================
-local flyData = nil
- 
-local function stopFly(restore)
-    local d = flyData
-    flyData = nil
- 
-    if not d then return end
- 
-    pcall(function() d.bg:Destroy() end)
- 
-    if restore and d.hum and d.hum.Parent then
-        local hum = d.hum
-        pcall(function() hum.PlatformStand = false end)
-        pcall(function()
-            for st, was in pairs(d.states) do
-                hum:SetStateEnabled(st, was)
+local tpwalking = false
+local flyThreads = {}
+
+local function stopFly()
+    tpwalking = false
+    flyThreads = {}
+end
+
+local function startFly()
+    if tpwalking then
+        tpwalking = false
+        task.wait()
+    end
+    tpwalking = true
+
+    local speeds = math.max(1, math.floor(S.flySpeed or 3))
+    for i = 1, speeds do
+        local thread = task.spawn(function()
+            local hb = game:GetService("RunService").Heartbeat
+            local chr = game.Players.LocalPlayer.Character
+            local hum = chr and chr:FindFirstChildWhichIsA("Humanoid")
+            while tpwalking and hb:Wait() and chr and hum and hum.Parent do
+                if hum.MoveDirection.Magnitude > 0 then
+                    chr:TranslateBy(hum.MoveDirection)
+                end
             end
         end)
-        pcall(function()
-            if d.animate then d.animate.Disabled = d.animateWas end
-        end)
-        pcall(function()
-            for _, track in ipairs(hum:GetPlayingAnimationTracks()) do
-                track:AdjustSpeed(1)
-            end
-        end)
-        pcall(function()
-            hum:ChangeState(Enum.HumanoidStateType.RunningNoPhysics)
-        end)
+        table.insert(flyThreads, thread)
     end
 end
- 
-local function startFly(char, hum, root)
-    local d = {char = char, hum = hum, root = root, states = {}}
- 
-    -- BodyGyro стабилизирует ориентацию, чтобы TranslateBy не крутил персонажа
-    d.bg = Instance.new("BodyGyro")
-    d.bg.MaxTorque = Vector3.new(1e9, 1e9, 1e9)
-    d.bg.P = 9e4
-    d.bg.CFrame = root.CFrame
-    d.bg.Parent = root
- 
-    for _, st in ipairs(FLY_STATES) do
-        pcall(function()
-            d.states[st] = hum:GetStateEnabled(st)
-            hum:SetStateEnabled(st, false)
-        end)
-    end
- 
-    pcall(function()
-        local animate = char:FindFirstChild("Animate")
-        if animate then
-            d.animateWas = animate.Disabled
-            animate.Disabled = true
-            d.animate = animate
-        end
-    end)
- 
-    pcall(function()
-        for _, track in ipairs(hum:GetPlayingAnimationTracks()) do
-            track:AdjustSpeed(0)
-        end
-    end)
- 
-    hum.PlatformStand = true
-    flyData = d
- 
-    -- Основной TP-цикл
-    connect(RunService.Heartbeat, function()
-        local data = flyData
-        if not data then return end
-        local chr = player.Character
-        local h = getHum()
-        local r = getRoot()
-        if not (chr and h and r and h.Parent) then return end
-        if data.root ~= r then return end
- 
-        local move = h.MoveDirection
-        if move.Magnitude > 0 then
-            local n = math.max(1, math.floor(S.flySpeed))
-            for _ = 1, n do
-                chr:TranslateBy(move)
-            end
-        end
- 
-        -- Держим ориентацию по камере
-        local cam = workspace.CurrentCamera
-        if cam then
-            pcall(function()
-                data.bg.CFrame = CFrame.new(r.Position, r.Position + cam.CFrame.LookVector)
-            end)
-        end
-    end)
-end
+-- ============================================================
  
 local lightSaved
 local function setFullbright(on)
@@ -902,13 +818,21 @@ addToggle(pageMove, "Noclip", false, function(v)
     if not v then restoreNoclip() end
 end, "noclip", Enum.KeyCode.N)
  
-addToggle(pageMove, "Fly", false, function(v)
+addToggle(pageMove, "Fly (TP-walk)", false, function(v)
     S.fly = v
-    if not v then stopFly(true) end
+    if v then
+        startFly()
+    else
+        stopFly()
+    end
 end, "fly", Enum.KeyCode.F)
  
-addSlider(pageMove, "Fly speed", 1, 20, 3, function(v)
+addSlider(pageMove, "Fly speed", 1, 20, S.flySpeed, function(v)
     S.flySpeed = v
+    if S.fly then
+        stopFly()
+        startFly()
+    end
 end)
  
 addToggle(pageMove, "Speed hack", false, function(v)
@@ -998,7 +922,7 @@ addBindRow(pageMisc, "Menu key", "menu", Enum.KeyCode.K, function()
     setOpen(not opened)
 end)
  
-addInfo(pageMisc, "Click a key box, then press the key you want.\nEsc cancels, Backspace clears the bind.\nFly: just move — speed slider = steps per tick.", 72)
+addInfo(pageMisc, "Click a key box, then press the key you want.\nEsc cancels, Backspace clears the bind.\nFly speed = steps per tick (как speeds).", 72)
  
 addButton(pageMisc, "Rejoin server", function()
     TeleportService:Teleport(game.PlaceId, player)
@@ -1101,15 +1025,6 @@ connect(RunService.Heartbeat, function(dt)
             hum.JumpPower = S.jumpVal
         end
     end
- 
-    -- Пересоздание fly после респавна / смены персонажа
-    if S.fly and not flyData then
-        local char = player.Character
-        local root = getRoot()
-        if char and hum and root then
-            pcall(startFly, char, hum, root)
-        end
-    end
 end)
  
 connect(RunService.RenderStepped, function()
@@ -1124,7 +1039,7 @@ env.__AstralCleanup = function()
     S.noclip = false
     S.fly = false
     restoreNoclip()
-    stopFly(true)
+    stopFly()
  
     local hum = getHum()
     if hum then
