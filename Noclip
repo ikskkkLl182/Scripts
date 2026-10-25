@@ -249,18 +249,15 @@ local function restoreNoclip()
     noclipOriginal = {}
 end
 
--- ===== FLY (logic from Fly GUI V3) =====
+-- ===== FLY =====
 local speeds = 1
 local nowe = false
-local tpwalking = false
+local FLY_UNIT = 10 -- studs per second for each point of "speeds" (lower = slower)
 
 local flyToggle
 local flySlider
 
 local flyCtrl = {f = 0, b = 0, l = 0, r = 0}
-local flyLast = {f = 0, b = 0, l = 0, r = 0}
-local flyMax = 50
-local flySpeedNow = 0
 local flyBodies = nil
 
 -- direction in 3D along the camera: look up + W = up, look down + W = down
@@ -275,53 +272,24 @@ local function flyDirection(ctrl)
 	return dir
 end
 
--- your tpwalking block (the only change: it moves along the camera, not along flat MoveDirection)
-local function startTpWalk()
-	tpwalking = false
-	for i = 1, speeds do
-		spawn(function()
-
-			local hb = game:GetService("RunService").Heartbeat	
-
-
-			tpwalking = true
-			local chr = game.Players.LocalPlayer.Character
-			local hum = chr and chr:FindFirstChildWhichIsA("Humanoid")
-			while tpwalking and hb:Wait() and chr and hum and hum.Parent do
-				local d = flyDirection(flyCtrl)
-				if d.Magnitude > 0 then
-					chr:TranslateBy(d)
-				end
-			end
-
-		end)
-	end
-end
-
 -- "plus" handler
 local function flySpeedUp()
 	if speeds >= 50 then return end
 	speeds = speeds + 1
 	if flySlider then flySlider.set(speeds) end
-	if nowe == true then
-		startTpWalk()
-	end
 end
 
--- "minus" handler (your code; the speed.Text lines are replaced by the slider)
+-- "minus" handler (min 1)
 local function flySpeedDown()
 	if speeds == 1 then
-		-- speed.Text = 'cannot be less than 1'
+		-- cannot be less than 1
 	else
 		speeds = speeds - 1
 		if flySlider then flySlider.set(speeds) end
-		if nowe == true then
-			startTpWalk()
-		end
 	end
 end
 
--- "onof" handler: turn fly on
+-- turn fly on
 local function flyOn()
 	local chr = player.Character
 	local hum = chr and chr:FindFirstChildOfClass("Humanoid")
@@ -329,7 +297,6 @@ local function flyOn()
 	if not (chr and hum and torso) then return false end
 
 	nowe = true
-	startTpWalk()
 
 	local animate = chr:FindFirstChild("Animate")
 	if animate then animate.Disabled = true end
@@ -348,23 +315,20 @@ local function flyOn()
 	bg.Parent = torso
 
 	local bv = Instance.new("BodyVelocity")
-	bv.Velocity = Vector3.new(0, 0.1, 0)
+	bv.Velocity = Vector3.new(0, 0, 0)
 	bv.MaxForce = Vector3.new(9e9, 9e9, 9e9)
 	bv.Parent = torso
 
 	hum.PlatformStand = true
 
 	flyCtrl = {f = 0, b = 0, l = 0, r = 0}
-	flyLast = {f = 0, b = 0, l = 0, r = 0}
-	flySpeedNow = 0
 	flyBodies = {bg = bg, bv = bv, hum = hum, chr = chr}
 	return true
 end
 
--- "onof" handler: turn fly off
+-- turn fly off
 local function flyOff()
 	nowe = false
-	tpwalking = false
 
 	local b = flyBodies
 	flyBodies = nil
@@ -394,7 +358,8 @@ local function flyOff()
 	end
 end
 
--- flight loop (BodyGyro / BodyVelocity, character follows the camera)
+-- flight loop: the character is moved with TranslateBy along the camera,
+-- turned to face where the camera looks (yaw only, always upright)
 connect(RunService.RenderStepped, function(dt)
 	if not nowe then return end
 
@@ -425,33 +390,24 @@ connect(RunService.RenderStepped, function(dt)
 		end
 	end
 
-	local ctrl, lastctrl = flyCtrl, flyLast
-	local bv, bg = b.bv, b.bg
-	local camCF = cam.CFrame
-	local moving = (ctrl.l + ctrl.r) ~= 0 or (ctrl.f + ctrl.b) ~= 0
+	-- movement
+	local d = flyDirection(flyCtrl)
+	if d.Magnitude > 0 then
+		b.chr:TranslateBy(d * speeds * FLY_UNIT * math.min(dt, 0.1))
+	end
+	b.bv.Velocity = Vector3.new(0, 0, 0)
 
-	if moving then
-		flySpeedNow = flySpeedNow + .5 + (flySpeedNow / flyMax)
-		if flySpeedNow > flyMax then
-			flySpeedNow = flyMax
-		end
-	elseif flySpeedNow ~= 0 then
-		flySpeedNow = flySpeedNow - 1
-		if flySpeedNow < 0 then
-			flySpeedNow = 0
-		end
+	-- face the camera direction, stay upright (no leaning, legs do not swing)
+	local look = cam.CFrame.LookVector
+	local flat = Vector3.new(look.X, 0, look.Z)
+	if flat.Magnitude > 0.01 then
+		b.bg.CFrame = CFrame.lookAt(Vector3.zero, flat.Unit)
 	end
 
-	if moving then
-		bv.Velocity = flyDirection(ctrl) * flySpeedNow
-		flyLast = {f = ctrl.f, b = ctrl.b, l = ctrl.l, r = ctrl.r}
-	elseif flySpeedNow ~= 0 then
-		bv.Velocity = flyDirection(lastctrl) * flySpeedNow
-	else
-		bv.Velocity = Vector3.new(0, 0, 0)
+	-- keep character animations frozen
+	for _, v in ipairs(b.hum:GetPlayingAnimationTracks()) do
+		v:AdjustSpeed(0)
 	end
-
-	bg.CFrame = camCF * CFrame.Angles(-math.rad((ctrl.f + ctrl.b) * 50 * flySpeedNow / flyMax), 0, 0)
 end)
 
 local lightSaved
@@ -998,9 +954,6 @@ end, "fly", Enum.KeyCode.F)
 
 flySlider = addSlider(pageMove, "Fly speed", 1, 50, speeds, function(v)
     speeds = math.max(v, 1)
-    if nowe == true then
-        startTpWalk()
-    end
 end)
 
 addBindRow(pageMove, "Fly speed +", "flyplus", nil, flySpeedUp)
@@ -1212,7 +1165,6 @@ env.__AstralCleanup = function()
     S.noclip = false
     restoreNoclip()
     nowe = false
-    tpwalking = false
     flyOff()
 
     local hum = getHum()
