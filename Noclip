@@ -1,96 +1,98 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
+local CoreGui = game:GetService("CoreGui")
+local TweenService = game:GetService("TweenService")
 
-local player = Players.LocalPlayer
-local noclip = false
-local original = {}
+local LocalPlayer = Players.LocalPlayer
+local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
 
-local gui = Instance.new("ScreenGui")
-gui.Name = "NoclipGui"
-gui.ResetOnSpawn = false
-gui.Parent = player:WaitForChild("PlayerGui")
+local noclipActive = false
+local connection = nil
 
-local button = Instance.new("TextButton")
-button.Size = UDim2.new(0, 120, 0, 45)
-button.Position = UDim2.new(1, -130, 0.5, 0)
-button.BackgroundColor3 = Color3.fromRGB(170, 50, 50)
-button.TextColor3 = Color3.new(1, 1, 1)
-button.Font = Enum.Font.GothamBold
-button.TextSize = 18
-button.Text = "Noclip: OFF"
-button.Active = true
-button.AutoButtonColor = false
-button.Parent = gui
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "AstralNoclipGui"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.Parent = CoreGui
 
-Instance.new("UICorner", button).CornerRadius = UDim.new(0, 8)
+local ActionButton = Instance.new("TextButton")
+ActionButton.Size = UDim2.new(0, 120, 0, 45)
+ActionButton.Position = UDim2.new(0.1, 0, 0.5, 0)
+ActionButton.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+ActionButton.TextColor3 = Color3.fromRGB(255, 50, 50)
+ActionButton.Text = "Noclip: OFF"
+ActionButton.Font = Enum.Font.Code
+ActionButton.TextSize = 14
+ActionButton.BorderSizePixel = 0
+ActionButton.Parent = ScreenGui
 
-local function setNoclip(state)
-    noclip = state
-    button.Text = noclip and "Noclip: ON" or "Noclip: OFF"
-    button.BackgroundColor3 = noclip
-        and Color3.fromRGB(50, 170, 80)
-        or Color3.fromRGB(170, 50, 50)
+local UICorner = Instance.new("UICorner")
+UICorner.CornerRadius = UDim.new(0, 8)
+UICorner.Parent = ActionButton
 
-    if not noclip then
-        for part, value in pairs(original) do
-            if part and part.Parent then
-                part.CanCollide = value
-            end
-        end
-        original = {}
-    end
+local dragging, dragInput, dragStart, startPos
+
+local function update(input)
+    local delta = input.Position - dragStart
+    local targetPos = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    TweenService:Create(ActionButton, TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Position = targetPos}):Play()
 end
 
--- перетаскивание + нажатие
-local dragging = false
-local moved = false
-local dragStart, startPos
-
-button.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1
-        or input.UserInputType == Enum.UserInputType.Touch then
+ActionButton.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
         dragging = true
-        moved = false
         dragStart = input.Position
-        startPos = button.Position
-
+        startPos = ActionButton.Position
+        
         input.Changed:Connect(function()
             if input.UserInputState == Enum.UserInputState.End then
                 dragging = false
-                if not moved then
-                    setNoclip(not noclip)
-                end
             end
         end)
     end
 end)
 
-UserInputService.InputChanged:Connect(function(input)
-    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
-        or input.UserInputType == Enum.UserInputType.Touch) then
-        local delta = input.Position - dragStart
-        if delta.Magnitude > 8 then
-            moved = true
-        end
-        if moved then
-            button.Position = UDim2.new(
-                startPos.X.Scale, startPos.X.Offset + delta.X,
-                startPos.Y.Scale, startPos.Y.Offset + delta.Y
-            )
-        end
+ActionButton.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+        dragInput = input
     end
 end)
 
-RunService.Stepped:Connect(function()
-    if noclip and player.Character then
-        for _, part in ipairs(player.Character:GetDescendants()) do
-            if part:IsA("BasePart") then
-                if original[part] == nil then
-                    original[part] = part.CanCollide
+RunService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        update(input)
+    end
+end)
+
+local function toggleNoclip()
+    noclipActive = not noclipActive
+    
+    if noclipActive then
+        ActionButton.TextColor3 = Color3.fromRGB(50, 255, 50)
+        ActionButton.Text = "Noclip: ON"
+        
+        connection = RunService.Stepped:Connect(function()
+            Character = LocalPlayer.Character
+            if Character then
+                for _, part in ipairs(Character:GetDescendants()) do
+                    if part:IsA("BasePart") and part.CanCollide then
+                        part.CanCollide = false
+                    end
                 end
-                part.CanCollide = false
             end
+        end)
+    else
+        ActionButton.TextColor3 = Color3.fromRGB(255, 50, 50)
+        ActionButton.Text = "Noclip: OFF"
+        
+        if connection then
+            connection:Disconnect()
+            connection = nil
         end
     end
+end
+
+ActionButton.MouseButton1Click:Connect(toggleNoclip)
+
+LocalPlayer.CharacterAdded:Connect(function(newChar)
+    Character = newChar
 end)
