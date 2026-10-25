@@ -4,21 +4,21 @@ local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local Lighting = game:GetService("Lighting")
 local TeleportService = game:GetService("TeleportService")
- 
+
 local player = Players.LocalPlayer
 local env = (getgenv and getgenv()) or _G
- 
+
 if env.__AstralCleanup then
     pcall(env.__AstralCleanup)
 end
- 
+
 local connections = {}
 local function connect(signal, fn)
     local c = signal:Connect(fn)
     table.insert(connections, c)
     return c
 end
- 
+
 local THEME = {
     bg = Color3.fromRGB(14, 14, 22),
     panel = Color3.fromRGB(21, 21, 33),
@@ -31,7 +31,7 @@ local THEME = {
     off = Color3.fromRGB(58, 58, 80),
     danger = Color3.fromRGB(255, 80, 100),
 }
- 
+
 local function new(class, props, parent)
     local inst = Instance.new(class)
     if props then
@@ -44,11 +44,11 @@ local function new(class, props, parent)
     end
     return inst
 end
- 
+
 local function corner(obj, radius)
     return new("UICorner", {CornerRadius = UDim.new(0, radius)}, obj)
 end
- 
+
 local function tween(obj, props, time, style)
     TweenService:Create(
         obj,
@@ -56,17 +56,17 @@ local function tween(obj, props, time, style)
         props
     ):Play()
 end
- 
+
 local layoutCounter = 0
 local function nextOrder()
     layoutCounter = layoutCounter + 1
     return layoutCounter
 end
- 
+
 local HttpService = game:GetService("HttpService")
 local SAVE_FILE = "astral_binds.json"
 local savedBinds = {}
- 
+
 if readfile and isfile then
     pcall(function()
         if isfile(SAVE_FILE) then
@@ -77,12 +77,12 @@ if readfile and isfile then
         end
     end)
 end
- 
+
 local binds = {}
 local bindActions = {}
 local bindRefresh = {}
 local listeningId = nil
- 
+
 local function saveBinds()
     if not writefile then return end
     local data = {}
@@ -93,7 +93,7 @@ local function saveBinds()
         writefile(SAVE_FILE, HttpService:JSONEncode(data))
     end)
 end
- 
+
 local function keyText(key)
     if not key then return "None" end
     local n = key.Name
@@ -102,7 +102,7 @@ local function keyText(key)
     n = string.gsub(n, "^Right", "R")
     return n
 end
- 
+
 local function registerBind(id, defaultKey, action)
     local resolved = defaultKey or false
     local saved = savedBinds[id]
@@ -117,7 +117,7 @@ local function registerBind(id, defaultKey, action)
     binds[id] = resolved
     bindActions[id] = action
 end
- 
+
 local function makeBindButton(parent, id, position)
     local btn = new("TextButton", {
         Size = UDim2.fromOffset(72, 24),
@@ -135,16 +135,16 @@ local function makeBindButton(parent, id, position)
         Color = THEME.off,
         ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
     }, btn)
- 
+
     local function refresh()
         local listening = listeningId == id
         btn.Text = listening and "..." or keyText(binds[id])
         btn.TextColor3 = listening and THEME.text or (binds[id] and THEME.accent2 or THEME.dim)
         tween(st, {Color = listening and THEME.accent or THEME.off}, 0.15)
     end
- 
+
     bindRefresh[id] = refresh
- 
+
     connect(btn.Activated, function()
         local prev = listeningId
         if listeningId == id then
@@ -155,10 +155,10 @@ local function makeBindButton(parent, id, position)
         if prev and bindRefresh[prev] then bindRefresh[prev]() end
         refresh()
     end)
- 
+
     refresh()
 end
- 
+
 local function addBindRow(page, text, id, defaultKey, action)
     local row = new("Frame", {
         Size = UDim2.new(1, 0, 0, 40),
@@ -180,7 +180,7 @@ local function addBindRow(page, text, id, defaultKey, action)
     registerBind(id, defaultKey, action)
     makeBindButton(row, id, UDim2.new(1, -86, 0.5, -12))
 end
- 
+
 connect(UserInputService.InputBegan, function(input, processed)
     if listeningId then
         if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
@@ -202,10 +202,10 @@ connect(UserInputService.InputBegan, function(input, processed)
         saveBinds()
         return
     end
- 
+
     if processed then return end
     if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
- 
+
     for id, key in pairs(binds) do
         if key and key == input.KeyCode then
             local action = bindActions[id]
@@ -213,11 +213,9 @@ connect(UserInputService.InputBegan, function(input, processed)
         end
     end
 end)
- 
+
 local S = {
     noclip = false,
-    fly = false,
-    flySpeed = 3,
     speed = false,
     speedVal = 50,
     jump = false,
@@ -227,20 +225,20 @@ local S = {
     antiAfk = false,
     fov = nil,
 }
- 
+
 local defaults = {walk = 16, jump = 50, useJumpPower = true}
 local defaultGravity = workspace.Gravity
- 
+
 local function getHum()
     local c = player.Character
     return c and c:FindFirstChildOfClass("Humanoid")
 end
- 
+
 local function getRoot()
     local c = player.Character
     return c and c:FindFirstChild("HumanoidRootPart")
 end
- 
+
 local noclipOriginal = {}
 local function restoreNoclip()
     for part, value in pairs(noclipOriginal) do
@@ -250,56 +248,7 @@ local function restoreNoclip()
     end
     noclipOriginal = {}
 end
- 
--- ============================================================
--- ВСТАВЛЕННЫЙ ФЛАЙ (ровно твой код, без менюшки)
--- ============================================================
-local tpwalking = false
-local flySpeedCount = 3
 
-local function stopFly()
-    tpwalking = false
-end
-
-local function startFly(speeds)
-    speeds = math.max(1, math.floor(speeds or S.flySpeed or 3))
-    flySpeedCount = speeds
-    if tpwalking then
-        tpwalking = false
-        task.wait()
-    end
-    tpwalking = true
-
-    -- Отключаем анимации в воздухе
-    local char = player.Character
-    if char then
-        local animate = char:FindFirstChild("Animate")
-        if animate then
-            animate.Disabled = true
-        end
-        local hum = char:FindFirstChildOfClass("Humanoid")
-        if hum then
-            for _, track in ipairs(hum:GetPlayingAnimationTracks()) do
-                track:Stop()
-            end
-        end
-    end
-
-    for i = 1, speeds do
-        spawn(function()
-            local hb = game:GetService("RunService").Heartbeat
-            local chr = game.Players.LocalPlayer.Character
-            local hum = chr and chr:FindFirstChildWhichIsA("Humanoid")
-            while tpwalking and hb:Wait() and chr and hum and hum.Parent do
-                if hum.MoveDirection.Magnitude > 0 then
-                    chr:TranslateBy(hum.MoveDirection)
-                end
-            end
-        end)
-    end
-end
--- ============================================================
- 
 local lightSaved
 local function setFullbright(on)
     if on then
@@ -327,13 +276,13 @@ local function setFullbright(on)
         lightSaved = nil
     end
 end
- 
+
 local gui = new("ScreenGui", {
     Name = "AstralMenu",
     ResetOnSpawn = false,
     ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
 })
- 
+
 local function mount()
     local targets = {
         function() return player:FindFirstChild("PlayerGui") or player:WaitForChild("PlayerGui", 5) end,
@@ -349,7 +298,7 @@ local function mount()
     end
 end
 mount()
- 
+
 local main = new("Frame", {
     Name = "Main",
     Size = UDim2.fromOffset(560, 380),
@@ -364,9 +313,9 @@ new("UIGradient", {
     Color = ColorSequence.new(Color3.fromRGB(28, 20, 48), THEME.bg),
     Rotation = 60,
 }, main)
- 
+
 local scale = new("UIScale", {Scale = 0}, main)
- 
+
 local mainStroke = new("UIStroke", {
     Thickness = 2,
     ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
@@ -379,13 +328,13 @@ local strokeGrad = new("UIGradient", {
         ColorSequenceKeypoint.new(1, THEME.accent),
     }),
 }, mainStroke)
- 
+
 local topbar = new("Frame", {
     Size = UDim2.new(1, 0, 0, 44),
     BackgroundTransparency = 1,
     Active = true,
 }, main)
- 
+
 local title = new("TextLabel", {
     BackgroundTransparency = 1,
     Position = UDim2.fromOffset(18, 0),
@@ -397,7 +346,7 @@ local title = new("TextLabel", {
     Text = "ASTRAL",
 }, topbar)
 new("UIGradient", {Color = ColorSequence.new(THEME.accent, THEME.accent2)}, title)
- 
+
 new("TextLabel", {
     BackgroundTransparency = 1,
     Position = UDim2.fromOffset(112, 3),
@@ -408,7 +357,7 @@ new("TextLabel", {
     TextColor3 = THEME.dim,
     Text = "menu  |  custom keybinds",
 }, topbar)
- 
+
 local closeBtn = new("TextButton", {
     Size = UDim2.fromOffset(28, 28),
     Position = UDim2.new(1, -42, 0, 8),
@@ -420,14 +369,14 @@ local closeBtn = new("TextButton", {
     TextColor3 = THEME.dim,
 }, topbar)
 corner(closeBtn, 8)
- 
+
 connect(closeBtn.MouseEnter, function()
     tween(closeBtn, {BackgroundColor3 = THEME.danger, TextColor3 = Color3.new(1, 1, 1)}, 0.15)
 end)
 connect(closeBtn.MouseLeave, function()
     tween(closeBtn, {BackgroundColor3 = THEME.item, TextColor3 = THEME.dim}, 0.15)
 end)
- 
+
 local topLine = new("Frame", {
     Position = UDim2.fromOffset(10, 44),
     Size = UDim2.new(1, -20, 0, 2),
@@ -442,7 +391,7 @@ new("UIGradient", {
         ColorSequenceKeypoint.new(1, THEME.accent),
     }),
 }, topLine)
- 
+
 local sidebar = new("Frame", {
     Position = UDim2.fromOffset(10, 56),
     Size = UDim2.new(0, 128, 1, -96),
@@ -459,13 +408,13 @@ new("UIListLayout", {
     Padding = UDim.new(0, 6),
     SortOrder = Enum.SortOrder.LayoutOrder,
 }, sidebar)
- 
+
 local content = new("Frame", {
     Position = UDim2.fromOffset(148, 56),
     Size = UDim2.new(1, -158, 1, -96),
     BackgroundTransparency = 1,
 }, main)
- 
+
 new("TextLabel", {
     BackgroundTransparency = 1,
     Position = UDim2.new(0, 14, 1, -30),
@@ -476,9 +425,9 @@ new("TextLabel", {
     TextColor3 = THEME.dim,
     Text = "Click a key box to rebind  |  Backspace clears",
 }, main)
- 
+
 local tabs = {}
- 
+
 local function selectTab(name)
     for n, t in pairs(tabs) do
         local active = n == name
@@ -488,7 +437,7 @@ local function selectTab(name)
         tween(t.bar, {BackgroundTransparency = active and 0 or 1}, 0.2)
     end
 end
- 
+
 local function addTab(name)
     local btn = new("TextButton", {
         Size = UDim2.new(1, 0, 0, 36),
@@ -499,7 +448,7 @@ local function addTab(name)
         LayoutOrder = nextOrder(),
     }, sidebar)
     corner(btn, 8)
- 
+
     local bar = new("Frame", {
         Size = UDim2.fromOffset(3, 18),
         Position = UDim2.new(0, 0, 0.5, -9),
@@ -508,7 +457,7 @@ local function addTab(name)
         BorderSizePixel = 0,
     }, btn)
     corner(bar, 2)
- 
+
     local label = new("TextLabel", {
         BackgroundTransparency = 1,
         Position = UDim2.fromOffset(14, 0),
@@ -519,7 +468,7 @@ local function addTab(name)
         TextColor3 = THEME.dim,
         Text = name,
     }, btn)
- 
+
     local page = new("ScrollingFrame", {
         Size = UDim2.fromScale(1, 1),
         BackgroundTransparency = 1,
@@ -539,9 +488,9 @@ local function addTab(name)
         PaddingTop = UDim.new(0, 2),
         PaddingBottom = UDim.new(0, 6),
     }, page)
- 
+
     tabs[name] = {button = btn, label = label, bar = bar, page = page}
- 
+
     connect(btn.MouseEnter, function()
         if not page.Visible then tween(label, {TextColor3 = THEME.text}, 0.15) end
     end)
@@ -551,10 +500,10 @@ local function addTab(name)
     connect(btn.Activated, function()
         selectTab(name)
     end)
- 
+
     return page
 end
- 
+
 local function addSection(page, text)
     new("TextLabel", {
         Size = UDim2.new(1, 0, 0, 18),
@@ -567,7 +516,7 @@ local function addSection(page, text)
         LayoutOrder = nextOrder(),
     }, page)
 end
- 
+
 local function addInfo(page, text, height)
     local row = new("Frame", {
         Size = UDim2.new(1, 0, 0, height or 60),
@@ -589,7 +538,7 @@ local function addInfo(page, text, height)
         Text = text,
     }, row)
 end
- 
+
 local function addToggle(page, text, default, callback, bindId, defaultKey)
     local row = new("Frame", {
         Size = UDim2.new(1, 0, 0, 40),
@@ -598,7 +547,7 @@ local function addToggle(page, text, default, callback, bindId, defaultKey)
         LayoutOrder = nextOrder(),
     }, page)
     corner(row, 8)
- 
+
     new("TextLabel", {
         BackgroundTransparency = 1,
         Position = UDim2.fromOffset(14, 0),
@@ -609,7 +558,7 @@ local function addToggle(page, text, default, callback, bindId, defaultKey)
         TextColor3 = THEME.text,
         Text = text,
     }, row)
- 
+
     local track = new("Frame", {
         Size = UDim2.fromOffset(44, 22),
         Position = UDim2.new(1, -58, 0.5, -11),
@@ -617,7 +566,7 @@ local function addToggle(page, text, default, callback, bindId, defaultKey)
         BorderSizePixel = 0,
     }, row)
     corner(track, 11)
- 
+
     local knob = new("Frame", {
         Size = UDim2.fromOffset(16, 16),
         Position = UDim2.fromOffset(3, 3),
@@ -625,46 +574,46 @@ local function addToggle(page, text, default, callback, bindId, defaultKey)
         BorderSizePixel = 0,
     }, track)
     corner(knob, 8)
- 
+
     local click = new("TextButton", {
         Size = UDim2.fromScale(1, 1),
         BackgroundTransparency = 1,
         Text = "",
     }, row)
- 
+
     local state = default and true or false
     local obj = {}
- 
+
     local function render()
         tween(track, {BackgroundColor3 = state and THEME.accent or THEME.off}, 0.2)
         tween(knob, {Position = state and UDim2.fromOffset(25, 3) or UDim2.fromOffset(3, 3)}, 0.2, Enum.EasingStyle.Back)
     end
- 
+
     function obj.set(v)
         state = v and true or false
         render()
         pcall(callback, state)
     end
- 
+
     function obj.get()
         return state
     end
- 
+
     connect(click.Activated, function()
         obj.set(not state)
     end)
- 
+
     if bindId then
         registerBind(bindId, defaultKey, function()
             obj.set(not state)
         end)
         makeBindButton(row, bindId, UDim2.new(1, -136, 0.5, -12))
     end
- 
+
     render()
     return obj
 end
- 
+
 local function addSlider(page, text, min, max, default, callback)
     local row = new("Frame", {
         Size = UDim2.new(1, 0, 0, 56),
@@ -673,7 +622,7 @@ local function addSlider(page, text, min, max, default, callback)
         LayoutOrder = nextOrder(),
     }, page)
     corner(row, 8)
- 
+
     new("TextLabel", {
         BackgroundTransparency = 1,
         Position = UDim2.fromOffset(14, 8),
@@ -684,7 +633,7 @@ local function addSlider(page, text, min, max, default, callback)
         TextColor3 = THEME.text,
         Text = text,
     }, row)
- 
+
     local valueLabel = new("TextLabel", {
         BackgroundTransparency = 1,
         Position = UDim2.new(1, -84, 0, 8),
@@ -695,7 +644,7 @@ local function addSlider(page, text, min, max, default, callback)
         TextColor3 = THEME.accent2,
         Text = tostring(default),
     }, row)
- 
+
     local bar = new("Frame", {
         Position = UDim2.new(0, 14, 0, 38),
         Size = UDim2.new(1, -28, 0, 6),
@@ -703,7 +652,7 @@ local function addSlider(page, text, min, max, default, callback)
         BorderSizePixel = 0,
     }, row)
     corner(bar, 3)
- 
+
     local fill = new("Frame", {
         Size = UDim2.new(0, 0, 1, 0),
         BackgroundColor3 = Color3.new(1, 1, 1),
@@ -711,32 +660,32 @@ local function addSlider(page, text, min, max, default, callback)
     }, bar)
     corner(fill, 3)
     new("UIGradient", {Color = ColorSequence.new(THEME.accent, THEME.accent2)}, fill)
- 
+
     local knob = new("Frame", {
         Size = UDim2.fromOffset(14, 14),
         BackgroundColor3 = Color3.new(1, 1, 1),
         BorderSizePixel = 0,
     }, bar)
     corner(knob, 7)
- 
+
     local hit = new("TextButton", {
         Position = UDim2.fromOffset(0, -10),
         Size = UDim2.new(1, 0, 0, 26),
         BackgroundTransparency = 1,
         Text = "",
     }, bar)
- 
+
     local value = default
- 
+
     local function render(v)
         local frac = (v - min) / (max - min)
         fill.Size = UDim2.new(frac, 0, 1, 0)
         knob.Position = UDim2.new(frac, -7, 0.5, -7)
         valueLabel.Text = tostring(v)
     end
- 
+
     local dragging = false
- 
+
     local function fromX(x)
         local rel = math.clamp((x - bar.AbsolutePosition.X) / math.max(bar.AbsoluteSize.X, 1), 0, 1)
         local v = math.floor(min + (max - min) * rel + 0.5)
@@ -746,7 +695,7 @@ local function addSlider(page, text, min, max, default, callback)
             pcall(callback, v)
         end
     end
- 
+
     connect(hit.InputBegan, function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1
             or input.UserInputType == Enum.UserInputType.Touch then
@@ -754,23 +703,23 @@ local function addSlider(page, text, min, max, default, callback)
             fromX(input.Position.X)
         end
     end)
- 
+
     connect(UserInputService.InputChanged, function(input)
         if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
             or input.UserInputType == Enum.UserInputType.Touch) then
             fromX(input.Position.X)
         end
     end)
- 
+
     connect(UserInputService.InputEnded, function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1
             or input.UserInputType == Enum.UserInputType.Touch then
             dragging = false
         end
     end)
- 
+
     render(default)
- 
+
     return {
         set = function(v)
             value = v
@@ -778,7 +727,7 @@ local function addSlider(page, text, min, max, default, callback)
         end,
     }
 end
- 
+
 local function addButton(page, text, callback)
     local btn = new("TextButton", {
         Size = UDim2.new(1, 0, 0, 38),
@@ -791,7 +740,7 @@ local function addButton(page, text, callback)
         LayoutOrder = nextOrder(),
     }, page)
     corner(btn, 8)
- 
+
     connect(btn.MouseEnter, function()
         tween(btn, {BackgroundColor3 = THEME.hover}, 0.15)
     end)
@@ -804,9 +753,9 @@ local function addButton(page, text, callback)
         pcall(callback)
     end)
 end
- 
+
 local opened = true
- 
+
 local function setOpen(v)
     opened = v
     if v then
@@ -819,37 +768,19 @@ local function setOpen(v)
         end)
     end
 end
- 
+
 local pageMove = addTab("Movement")
 local pagePlayer = addTab("Player")
 local pageVisual = addTab("Visual")
 local pageMisc = addTab("Misc")
- 
+
 addSection(pageMove, "Movement")
- 
+
 addToggle(pageMove, "Noclip", false, function(v)
     S.noclip = v
     if not v then restoreNoclip() end
 end, "noclip", Enum.KeyCode.N)
- 
-addToggle(pageMove, "Fly", false, function(v)
-    S.fly = v
-    if v then
-        startFly(S.flySpeed)
-    else
-        stopFly()
-    end
-end, "fly", Enum.KeyCode.F)
- 
-addSlider(pageMove, "Fly speed", 1, 20, S.flySpeed, function(v)
-    S.flySpeed = v
-    if S.fly then
-        stopFly()
-        task.wait(0.05)
-        startFly(v)
-    end
-end)
- 
+
 addToggle(pageMove, "Speed hack", false, function(v)
     local hum = getHum()
     if v then
@@ -860,11 +791,11 @@ addToggle(pageMove, "Speed hack", false, function(v)
         if hum then hum.WalkSpeed = defaults.walk end
     end
 end, "speed")
- 
+
 addSlider(pageMove, "Walk speed", 16, 250, S.speedVal, function(v)
     S.speedVal = v
 end)
- 
+
 addToggle(pageMove, "Jump power", false, function(v)
     local hum = getHum()
     if v then
@@ -881,82 +812,82 @@ addToggle(pageMove, "Jump power", false, function(v)
         end
     end
 end, "jump")
- 
+
 addSlider(pageMove, "Jump value", 50, 300, S.jumpVal, function(v)
     S.jumpVal = v
 end)
- 
+
 addToggle(pageMove, "Infinite jump", false, function(v)
     S.infJump = v
 end, "infjump")
- 
+
 addSection(pagePlayer, "Player")
- 
+
 local gravitySlider = addSlider(pagePlayer, "Gravity", 0, 400, math.floor(defaultGravity + 0.5), function(v)
     workspace.Gravity = v
 end)
- 
+
 addButton(pagePlayer, "Reset gravity", function()
     workspace.Gravity = defaultGravity
     gravitySlider.set(math.floor(defaultGravity + 0.5))
 end)
- 
+
 addToggle(pagePlayer, "Click TP (Ctrl+click)", false, function(v)
     S.clickTp = v
 end, "clicktp")
- 
+
 addToggle(pagePlayer, "Anti AFK", false, function(v)
     S.antiAfk = v
 end, "antiafk")
- 
+
 addButton(pagePlayer, "Reset character", function()
     local hum = getHum()
     if hum then hum.Health = 0 end
 end)
- 
+
 addSection(pageVisual, "Visual")
- 
+
 addToggle(pageVisual, "Fullbright", false, function(v)
     setFullbright(v)
 end, "fullbright")
- 
+
 local fovSlider = addSlider(pageVisual, "Field of view", 40, 120, 70, function(v)
     S.fov = v
 end)
- 
+
 addButton(pageVisual, "Reset FOV", function()
     S.fov = nil
     local cam = workspace.CurrentCamera
     if cam then cam.FieldOfView = 70 end
     fovSlider.set(70)
 end)
- 
+
 addSection(pageMisc, "Misc")
- 
+
 addBindRow(pageMisc, "Menu key", "menu", Enum.KeyCode.K, function()
     setOpen(not opened)
 end)
- 
-addInfo(pageMisc, "Click a key box, then press the key you want.\nEsc cancels, Backspace clears the bind.\nFly speed = кол-во шагов TranslateBy за тик.", 72)
- 
+
+addInfo(pageMisc, "Click a key box, then press the key you want.\nEsc cancels, Backspace clears the bind.", 60)
+
 addButton(pageMisc, "Rejoin server", function()
     TeleportService:Teleport(game.PlaceId, player)
 end)
- 
+
 addButton(pageMisc, "Unload menu", function()
     if env.__AstralCleanup then env.__AstralCleanup() end
 end)
- 
+
 selectTab("Movement")
- 
+
 connect(closeBtn.Activated, function()
     setOpen(false)
 end)
- 
+
 tween(scale, {Scale = 1}, 0.5, Enum.EasingStyle.Back)
- 
+
 local dragging, dragStart, startPos = false, nil, nil
- 
+
 connect(topbar.InputBegan, function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1
         or input.UserInputType == Enum.UserInputType.Touch then
@@ -965,7 +896,7 @@ connect(topbar.InputBegan, function(input)
         startPos = main.Position
     end
 end)
- 
+
 connect(UserInputService.InputChanged, function(input)
     if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
         or input.UserInputType == Enum.UserInputType.Touch) then
@@ -976,16 +907,16 @@ connect(UserInputService.InputChanged, function(input)
         )
     end
 end)
- 
+
 connect(UserInputService.InputEnded, function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1
         or input.UserInputType == Enum.UserInputType.Touch then
         dragging = false
     end
 end)
- 
+
 local mouse = player:GetMouse()
- 
+
 connect(UserInputService.InputBegan, function(input, processed)
     if processed or not S.clickTp then return end
     if input.UserInputType == Enum.UserInputType.MouseButton1
@@ -996,14 +927,14 @@ connect(UserInputService.InputBegan, function(input, processed)
         end
     end
 end)
- 
+
 connect(UserInputService.JumpRequest, function()
     if S.infJump then
         local hum = getHum()
         if hum then hum:ChangeState(Enum.HumanoidStateType.Jumping) end
     end
 end)
- 
+
 connect(player.Idled, function()
     if S.antiAfk then
         pcall(function()
@@ -1013,7 +944,7 @@ connect(player.Idled, function()
         end)
     end
 end)
- 
+
 connect(RunService.Stepped, function()
     local char = player.Character
     if S.noclip and char then
@@ -1027,10 +958,10 @@ connect(RunService.Stepped, function()
         end
     end
 end)
- 
+
 connect(RunService.Heartbeat, function(dt)
     local hum = getHum()
- 
+
     if hum then
         if S.speed then
             hum.WalkSpeed = S.speedVal
@@ -1041,7 +972,7 @@ connect(RunService.Heartbeat, function(dt)
         end
     end
 end)
- 
+
 connect(RunService.RenderStepped, function()
     strokeGrad.Rotation = (os.clock() * 80) % 360
     if S.fov then
@@ -1049,13 +980,11 @@ connect(RunService.RenderStepped, function()
         if cam then cam.FieldOfView = S.fov end
     end
 end)
- 
+
 env.__AstralCleanup = function()
     S.noclip = false
-    S.fly = false
     restoreNoclip()
-    stopFly()
- 
+
     local hum = getHum()
     if hum then
         if S.speed then hum.WalkSpeed = defaults.walk end
@@ -1066,10 +995,10 @@ env.__AstralCleanup = function()
     end
     S.speed = false
     S.jump = false
- 
+
     setFullbright(false)
     workspace.Gravity = defaultGravity
- 
+
     for _, c in ipairs(connections) do
         pcall(function() c:Disconnect() end)
     end
