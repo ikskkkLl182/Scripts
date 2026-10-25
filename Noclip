@@ -596,6 +596,18 @@ connect(player.CharacterAdded, function()
 	end
 end)
 
+-- camera lock while flying: the character always faces where the camera looks
+-- (same orientation the BodyGyro in the fly script aims for, applied every frame)
+connect(RunService.RenderStepped, function()
+	if not nowe then return end
+	local chr = player.Character
+	local root = chr and chr:FindFirstChild("HumanoidRootPart")
+	local cam = workspace.CurrentCamera
+	if root and cam then
+		root.CFrame = CFrame.new(root.Position) * (cam.CFrame - cam.CFrame.Position)
+	end
+end)
+
 local lightSaved
 local function setFullbright(on)
     if on then
