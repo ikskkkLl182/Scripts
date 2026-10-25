@@ -227,7 +227,6 @@ local S = {
     antiAfk = false,
     fov = nil,
     flyFollowCam = true,
-    flyPad = UserInputService.TouchEnabled,
 }
  
 local defaults = {walk = 16, jump = 50, useJumpPower = true}
@@ -272,22 +271,15 @@ local FLY_STATES = {
 }
  
 -- ============================================================
--- TP-FLY (заменяет старый BodyVelocity-флай)
--- Логика: каждый Heartbeat делаем N шагов TranslateBy по MoveDirection.
--- N = math.max(1, floor(S.flySpeed / 10)), S.flySpeed из слайдера.
+-- TP-FLY: переписанный fly из второго кода.
+-- Логика: пока fly включён — каждый Heartbeat делаем N шагов
+-- chr:TranslateBy(hum.MoveDirection). N = S.flySpeed (как speeds).
 -- ============================================================
 local flyData = nil
-local padUp, padDown = false, false
-local FLY_HB_CONN = nil
  
 local function stopFly(restore)
     local d = flyData
     flyData = nil
- 
-    if FLY_HB_CONN then
-        pcall(function() FLY_HB_CONN:Disconnect() end)
-        FLY_HB_CONN = nil
-    end
  
     if not d then return end
  
@@ -318,7 +310,7 @@ end
 local function startFly(char, hum, root)
     local d = {char = char, hum = hum, root = root, states = {}}
  
-    -- BodyGyro держит ориентацию по камере, чтобы TP не крутил персонажа
+    -- BodyGyro стабилизирует ориентацию, чтобы TranslateBy не крутил персонажа
     d.bg = Instance.new("BodyGyro")
     d.bg.MaxTorque = Vector3.new(1e9, 1e9, 1e9)
     d.bg.P = 9e4
@@ -350,8 +342,8 @@ local function startFly(char, hum, root)
     hum.PlatformStand = true
     flyData = d
  
-    -- TP-цикл: N шагов TranslateBy за Heartbeat (N = S.flySpeed / 10)
-    FLY_HB_CONN = RunService.Heartbeat:Connect(function()
+    -- Основной TP-цикл
+    connect(RunService.Heartbeat, function()
         local data = flyData
         if not data then return end
         local chr = player.Character
@@ -361,41 +353,20 @@ local function startFly(char, hum, root)
         if data.root ~= r then return end
  
         local move = h.MoveDirection
-        local step = move
- 
-        local cam = workspace.CurrentCamera
-        local look = cam and cam.CFrame.LookVector or Vector3.zero
-        local flatLook = Vector3.new(look.X, 0, look.Z)
- 
-        local up = 0
-        if not UserInputService:GetFocusedTextBox() then
-            if UserInputService:IsKeyDown(Enum.KeyCode.Space) then up = up + 1 end
-            if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then up = up - 1 end
-        end
-        if padUp then up = up + 1 end
-        if padDown then up = up - 1 end
- 
-        if up ~= 0 then
-            step = step + Vector3.new(0, up, 0)
-        end
- 
-        -- Следуем за камерой по вертикали (как в оригинале S.flyFollowCam)
-        if S.flyFollowCam and flatLook.Magnitude > 0.01 and move.Magnitude > 0 then
-            local forward = move:Dot(flatLook.Unit)
-            step = step + Vector3.new(0, look.Y * forward, 0)
-        end
- 
-        if step.Magnitude > 0 then
-            local n = math.max(1, math.floor(S.flySpeed / 10))
+        if move.Magnitude > 0 then
+            local n = math.max(1, math.floor(S.flySpeed))
             for _ = 1, n do
-                chr:TranslateBy(step)
+                chr:TranslateBy(move)
             end
         end
  
-        -- Ориентация по камере
-        pcall(function()
-            data.bg.CFrame = CFrame.new(r.Position, r.Position + look)
-        end)
+        -- Держим ориентацию по камере
+        local cam = workspace.CurrentCamera
+        if cam then
+            pcall(function()
+                data.bg.CFrame = CFrame.new(r.Position, r.Position + cam.CFrame.LookVector)
+            end)
+        end
     end)
 end
  
@@ -448,58 +419,6 @@ local function mount()
     end
 end
 mount()
- 
-local flyPad = new("Frame", {
-    Name = "FlyPad",
-    Size = UDim2.fromOffset(74, 150),
-    Position = UDim2.new(1, -92, 0.5, -75),
-    BackgroundTransparency = 1,
-    Visible = false,
-}, gui)
- 
-local function makePadButton(text, y, isUp)
-    local b = new("TextButton", {
-        Size = UDim2.fromOffset(74, 70),
-        Position = UDim2.fromOffset(0, y),
-        BackgroundColor3 = THEME.item,
-        AutoButtonColor = false,
-        Text = text,
-        Font = Enum.Font.GothamBold,
-        TextSize = 16,
-        TextColor3 = THEME.text,
-    }, flyPad)
-    corner(b, 14)
-    new("UIStroke", {
-        Thickness = 2,
-        Color = THEME.accent,
-        ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
-    }, b)
-    connect(b.InputBegan, function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1
-            or input.UserInputType == Enum.UserInputType.Touch then
-            if isUp then padUp = true else padDown = true end
-            tween(b, {BackgroundColor3 = THEME.accent}, 0.1)
-        end
-    end)
-    return b
-end
- 
-local padUpBtn = makePadButton("UP", 0, true)
-local padDownBtn = makePadButton("DOWN", 80, false)
- 
-connect(UserInputService.InputEnded, function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1
-        or input.UserInputType == Enum.UserInputType.Touch then
-        padUp = false
-        padDown = false
-        tween(padUpBtn, {BackgroundColor3 = THEME.item}, 0.15)
-        tween(padDownBtn, {BackgroundColor3 = THEME.item}, 0.15)
-    end
-end)
- 
-local function updatePad()
-    flyPad.Visible = S.fly and S.flyPad
-end
  
 local main = new("Frame", {
     Name = "Main",
@@ -983,23 +902,13 @@ addToggle(pageMove, "Noclip", false, function(v)
     if not v then restoreNoclip() end
 end, "noclip", Enum.KeyCode.N)
  
-addToggle(pageMove, "Fly (TP)", false, function(v)
+addToggle(pageMove, "Fly", false, function(v)
     S.fly = v
     if not v then stopFly(true) end
-    updatePad()
 end, "fly", Enum.KeyCode.F)
  
-addSlider(pageMove, "Fly speed", 10, 200, S.flySpeed, function(v)
+addSlider(pageMove, "Fly speed", 1, 20, 3, function(v)
     S.flySpeed = v
-end)
- 
-addToggle(pageMove, "Fly follows camera", S.flyFollowCam, function(v)
-    S.flyFollowCam = v
-end)
- 
-addToggle(pageMove, "Fly UP/DOWN buttons", S.flyPad, function(v)
-    S.flyPad = v
-    updatePad()
 end)
  
 addToggle(pageMove, "Speed hack", false, function(v)
@@ -1089,7 +998,7 @@ addBindRow(pageMisc, "Menu key", "menu", Enum.KeyCode.K, function()
     setOpen(not opened)
 end)
  
-addInfo(pageMisc, "Click a key box, then press the key you want.\nEsc cancels, Backspace clears the bind.\nFly (TP): Space up, Shift down (or UP/DOWN buttons).\nFly speed slider = steps per tick (higher = faster).", 96)
+addInfo(pageMisc, "Click a key box, then press the key you want.\nEsc cancels, Backspace clears the bind.\nFly: just move — speed slider = steps per tick.", 72)
  
 addButton(pageMisc, "Rejoin server", function()
     TeleportService:Teleport(game.PlaceId, player)
@@ -1193,6 +1102,7 @@ connect(RunService.Heartbeat, function(dt)
         end
     end
  
+    -- Пересоздание fly после респавна / смены персонажа
     if S.fly and not flyData then
         local char = player.Character
         local root = getRoot()
