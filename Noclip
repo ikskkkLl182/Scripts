@@ -63,6 +63,157 @@ local function nextOrder()
     return layoutCounter
 end
  
+local HttpService = game:GetService("HttpService")
+local SAVE_FILE = "astral_binds.json"
+local savedBinds = {}
+ 
+if readfile and isfile then
+    pcall(function()
+        if isfile(SAVE_FILE) then
+            local decoded = HttpService:JSONDecode(readfile(SAVE_FILE))
+            if type(decoded) == "table" then
+                savedBinds = decoded
+            end
+        end
+    end)
+end
+ 
+local binds = {}
+local bindActions = {}
+local bindRefresh = {}
+local listeningId = nil
+ 
+local function saveBinds()
+    if not writefile then return end
+    local data = {}
+    for id, key in pairs(binds) do
+        data[id] = key and key.Name or ""
+    end
+    pcall(function()
+        writefile(SAVE_FILE, HttpService:JSONEncode(data))
+    end)
+end
+ 
+local function keyText(key)
+    if not key then return "None" end
+    local n = key.Name
+    n = string.gsub(n, "Control", "Ctrl")
+    n = string.gsub(n, "^Left", "L")
+    n = string.gsub(n, "^Right", "R")
+    return n
+end
+ 
+local function registerBind(id, defaultKey, action)
+    local resolved = defaultKey or false
+    local saved = savedBinds[id]
+    if type(saved) == "string" then
+        if saved == "" then
+            resolved = false
+        else
+            local ok, key = pcall(function() return Enum.KeyCode[saved] end)
+            if ok and key then resolved = key end
+        end
+    end
+    binds[id] = resolved
+    bindActions[id] = action
+end
+ 
+local function makeBindButton(parent, id, position)
+    local btn = new("TextButton", {
+        Size = UDim2.fromOffset(72, 24),
+        Position = position,
+        BackgroundColor3 = THEME.bg,
+        AutoButtonColor = false,
+        Text = keyText(binds[id]),
+        Font = Enum.Font.GothamBold,
+        TextSize = 11,
+        TextColor3 = THEME.accent2,
+    }, parent)
+    corner(btn, 6)
+    local st = new("UIStroke", {
+        Thickness = 1,
+        Color = THEME.off,
+        ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+    }, btn)
+ 
+    local function refresh()
+        local listening = listeningId == id
+        btn.Text = listening and "..." or keyText(binds[id])
+        btn.TextColor3 = listening and THEME.text or (binds[id] and THEME.accent2 or THEME.dim)
+        tween(st, {Color = listening and THEME.accent or THEME.off}, 0.15)
+    end
+ 
+    bindRefresh[id] = refresh
+ 
+    connect(btn.Activated, function()
+        local prev = listeningId
+        if listeningId == id then
+            listeningId = nil
+        else
+            listeningId = id
+        end
+        if prev and bindRefresh[prev] then bindRefresh[prev]() end
+        refresh()
+    end)
+ 
+    refresh()
+end
+ 
+local function addBindRow(page, text, id, defaultKey, action)
+    local row = new("Frame", {
+        Size = UDim2.new(1, 0, 0, 40),
+        BackgroundColor3 = THEME.item,
+        BorderSizePixel = 0,
+        LayoutOrder = nextOrder(),
+    }, page)
+    corner(row, 8)
+    new("TextLabel", {
+        BackgroundTransparency = 1,
+        Position = UDim2.fromOffset(14, 0),
+        Size = UDim2.new(1, -100, 1, 0),
+        Font = Enum.Font.GothamMedium,
+        TextSize = 14,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextColor3 = THEME.text,
+        Text = text,
+    }, row)
+    registerBind(id, defaultKey, action)
+    makeBindButton(row, id, UDim2.new(1, -86, 0.5, -12))
+end
+ 
+connect(UserInputService.InputBegan, function(input, processed)
+    if listeningId then
+        if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
+        local id = listeningId
+        listeningId = nil
+        if input.KeyCode == Enum.KeyCode.Escape then
+        elseif input.KeyCode == Enum.KeyCode.Backspace then
+            binds[id] = false
+        else
+            for otherId, key in pairs(binds) do
+                if otherId ~= id and key == input.KeyCode then
+                    binds[otherId] = false
+                    if bindRefresh[otherId] then bindRefresh[otherId]() end
+                end
+            end
+            binds[id] = input.KeyCode
+        end
+        if bindRefresh[id] then bindRefresh[id]() end
+        saveBinds()
+        return
+    end
+ 
+    if processed then return end
+    if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
+ 
+    for id, key in pairs(binds) do
+        if key and key == input.KeyCode then
+            local action = bindActions[id]
+            if action then pcall(action) end
+        end
+    end
+end)
+ 
 local S = {
     noclip = false,
     fly = false,
@@ -75,6 +226,8 @@ local S = {
     clickTp = false,
     antiAfk = false,
     fov = nil,
+    flyFollowCam = true,
+    flyPad = UserInputService.TouchEnabled,
 }
  
 local defaults = {walk = 16, jump = 50, useJumpPower = true}
@@ -100,10 +253,153 @@ local function restoreNoclip()
     noclipOriginal = {}
 end
  
-local flyBV, flyBG
-local function stopFly()
-    if flyBV then flyBV:Destroy() flyBV = nil end
-    if flyBG then flyBG:Destroy() flyBG = nil end
+local FLY_STATES = {
+    Enum.HumanoidStateType.Climbing,
+    Enum.HumanoidStateType.FallingDown,
+    Enum.HumanoidStateType.Flying,
+    Enum.HumanoidStateType.Freefall,
+    Enum.HumanoidStateType.GettingUp,
+    Enum.HumanoidStateType.Jumping,
+    Enum.HumanoidStateType.Landed,
+    Enum.HumanoidStateType.Physics,
+    Enum.HumanoidStateType.PlatformStanding,
+    Enum.HumanoidStateType.Ragdoll,
+    Enum.HumanoidStateType.Running,
+    Enum.HumanoidStateType.RunningNoPhysics,
+    Enum.HumanoidStateType.Seated,
+    Enum.HumanoidStateType.StrafingNoPhysics,
+    Enum.HumanoidStateType.Swimming,
+}
+ 
+local flyData = nil
+local flyVel = Vector3.zero
+local padUp, padDown = false, false
+ 
+local function stopFly(restore)
+    local d = flyData
+    flyData = nil
+    flyVel = Vector3.zero
+    if not d then return end
+ 
+    pcall(function() d.bv:Destroy() end)
+    pcall(function() d.bg:Destroy() end)
+ 
+    if restore and d.hum and d.hum.Parent then
+        local hum = d.hum
+        pcall(function() hum.PlatformStand = false end)
+        pcall(function()
+            for st, was in pairs(d.states) do
+                hum:SetStateEnabled(st, was)
+            end
+        end)
+        pcall(function()
+            if d.animate then d.animate.Disabled = d.animateWas end
+        end)
+        pcall(function()
+            for _, track in ipairs(hum:GetPlayingAnimationTracks()) do
+                track:AdjustSpeed(1)
+            end
+        end)
+        pcall(function()
+            hum:ChangeState(Enum.HumanoidStateType.RunningNoPhysics)
+        end)
+    end
+end
+ 
+local function startFly(char, hum, root)
+    local d = {char = char, hum = hum, root = root, states = {}}
+ 
+    d.bv = Instance.new("BodyVelocity")
+    d.bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
+    d.bv.Velocity = Vector3.zero
+    d.bv.Parent = root
+ 
+    d.bg = Instance.new("BodyGyro")
+    d.bg.MaxTorque = Vector3.new(1e9, 1e9, 1e9)
+    d.bg.P = 9e4
+    d.bg.CFrame = root.CFrame
+    d.bg.Parent = root
+ 
+    for _, st in ipairs(FLY_STATES) do
+        pcall(function()
+            d.states[st] = hum:GetStateEnabled(st)
+            hum:SetStateEnabled(st, false)
+        end)
+    end
+ 
+    pcall(function()
+        local animate = char:FindFirstChild("Animate")
+        if animate then
+            d.animateWas = animate.Disabled
+            animate.Disabled = true
+            d.animate = animate
+        end
+    end)
+ 
+    pcall(function()
+        for _, track in ipairs(hum:GetPlayingAnimationTracks()) do
+            track:AdjustSpeed(0)
+        end
+    end)
+ 
+    hum.PlatformStand = true
+    flyData = d
+    flyVel = Vector3.zero
+end
+ 
+local function flyStep(dt)
+    local char = player.Character
+    local hum = getHum()
+    local root = getRoot()
+    local cam = workspace.CurrentCamera
+    if not (char and hum and root and cam) then return end
+ 
+    if flyData and flyData.root ~= root then
+        stopFly(false)
+    end
+    if flyData and (flyData.bv.Parent ~= root or flyData.bg.Parent ~= root) then
+        stopFly(true)
+    end
+    if not flyData then
+        local ok = pcall(startFly, char, hum, root)
+        if not ok or not flyData then return end
+    end
+ 
+    local maxSpeed = S.flySpeed
+    local move = hum.MoveDirection
+    local look = cam.CFrame.LookVector
+    local flatLook = Vector3.new(look.X, 0, look.Z)
+ 
+    local target = move * maxSpeed
+ 
+    if S.flyFollowCam and flatLook.Magnitude > 0.01 then
+        local forward = move:Dot(flatLook.Unit)
+        target = target + Vector3.new(0, look.Y * forward * maxSpeed, 0)
+        if target.Magnitude > maxSpeed then
+            target = target.Unit * maxSpeed
+        end
+    end
+ 
+    local up = 0
+    if not UserInputService:GetFocusedTextBox() then
+        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then up = up + 1 end
+        if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then up = up - 1 end
+    end
+    if padUp then up = up + 1 end
+    if padDown then up = up - 1 end
+    up = math.clamp(up, -1, 1)
+ 
+    target = target + Vector3.new(0, up * maxSpeed, 0)
+ 
+    local rate = target.Magnitude > 0.1 and 6 or 4
+    flyVel = flyVel:Lerp(target, 1 - math.exp(-dt * rate))
+    flyData.bv.Velocity = flyVel
+ 
+    local tilt = 0
+    if flatLook.Magnitude > 0.01 then
+        tilt = math.clamp(flyVel:Dot(flatLook.Unit) / math.max(maxSpeed, 1), -1, 1)
+    end
+    flyData.bg.CFrame = cam.CFrame * CFrame.Angles(-math.rad(tilt * 50), 0, 0)
 end
  
 local lightSaved
@@ -155,6 +451,58 @@ local function mount()
     end
 end
 mount()
+ 
+local flyPad = new("Frame", {
+    Name = "FlyPad",
+    Size = UDim2.fromOffset(74, 150),
+    Position = UDim2.new(1, -92, 0.5, -75),
+    BackgroundTransparency = 1,
+    Visible = false,
+}, gui)
+ 
+local function makePadButton(text, y, isUp)
+    local b = new("TextButton", {
+        Size = UDim2.fromOffset(74, 70),
+        Position = UDim2.fromOffset(0, y),
+        BackgroundColor3 = THEME.item,
+        AutoButtonColor = false,
+        Text = text,
+        Font = Enum.Font.GothamBold,
+        TextSize = 16,
+        TextColor3 = THEME.text,
+    }, flyPad)
+    corner(b, 14)
+    new("UIStroke", {
+        Thickness = 2,
+        Color = THEME.accent,
+        ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+    }, b)
+    connect(b.InputBegan, function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch then
+            if isUp then padUp = true else padDown = true end
+            tween(b, {BackgroundColor3 = THEME.accent}, 0.1)
+        end
+    end)
+    return b
+end
+ 
+local padUpBtn = makePadButton("UP", 0, true)
+local padDownBtn = makePadButton("DOWN", 80, false)
+ 
+connect(UserInputService.InputEnded, function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+        padUp = false
+        padDown = false
+        tween(padUpBtn, {BackgroundColor3 = THEME.item}, 0.15)
+        tween(padDownBtn, {BackgroundColor3 = THEME.item}, 0.15)
+    end
+end)
+ 
+local function updatePad()
+    flyPad.Visible = S.fly and S.flyPad
+end
  
 local main = new("Frame", {
     Name = "Main",
@@ -212,7 +560,7 @@ new("TextLabel", {
     TextSize = 12,
     TextXAlignment = Enum.TextXAlignment.Left,
     TextColor3 = THEME.dim,
-    Text = "menu  |  K to hide",
+    Text = "menu  |  custom keybinds",
 }, topbar)
  
 local closeBtn = new("TextButton", {
@@ -280,7 +628,7 @@ new("TextLabel", {
     TextSize = 11,
     TextXAlignment = Enum.TextXAlignment.Left,
     TextColor3 = THEME.dim,
-    Text = "N noclip   |   F fly   |   K menu",
+    Text = "Click a key box to rebind  |  Backspace clears",
 }, main)
  
 local tabs = {}
@@ -396,7 +744,7 @@ local function addInfo(page, text, height)
     }, row)
 end
  
-local function addToggle(page, text, default, callback)
+local function addToggle(page, text, default, callback, bindId, defaultKey)
     local row = new("Frame", {
         Size = UDim2.new(1, 0, 0, 40),
         BackgroundColor3 = THEME.item,
@@ -408,7 +756,7 @@ local function addToggle(page, text, default, callback)
     new("TextLabel", {
         BackgroundTransparency = 1,
         Position = UDim2.fromOffset(14, 0),
-        Size = UDim2.new(1, -80, 1, 0),
+        Size = UDim2.new(1, bindId and -158 or -80, 1, 0),
         Font = Enum.Font.GothamMedium,
         TextSize = 14,
         TextXAlignment = Enum.TextXAlignment.Left,
@@ -459,6 +807,13 @@ local function addToggle(page, text, default, callback)
     connect(click.Activated, function()
         obj.set(not state)
     end)
+ 
+    if bindId then
+        registerBind(bindId, defaultKey, function()
+            obj.set(not state)
+        end)
+        makeBindButton(row, bindId, UDim2.new(1, -136, 0.5, -12))
+    end
  
     render()
     return obj
@@ -604,6 +959,21 @@ local function addButton(page, text, callback)
     end)
 end
  
+local opened = true
+ 
+local function setOpen(v)
+    opened = v
+    if v then
+        main.Visible = true
+        tween(scale, {Scale = 1}, 0.35, Enum.EasingStyle.Back)
+    else
+        tween(scale, {Scale = 0}, 0.2)
+        task.delay(0.22, function()
+            if not opened then main.Visible = false end
+        end)
+    end
+end
+ 
 local pageMove = addTab("Movement")
 local pagePlayer = addTab("Player")
 local pageVisual = addTab("Visual")
@@ -611,18 +981,28 @@ local pageMisc = addTab("Misc")
  
 addSection(pageMove, "Movement")
  
-local tNoclip = addToggle(pageMove, "Noclip  (N)", false, function(v)
+addToggle(pageMove, "Noclip", false, function(v)
     S.noclip = v
     if not v then restoreNoclip() end
-end)
+end, "noclip", Enum.KeyCode.N)
  
-local tFly = addToggle(pageMove, "Fly  (F)", false, function(v)
+addToggle(pageMove, "Fly", false, function(v)
     S.fly = v
-    if not v then stopFly() end
-end)
+    if not v then stopFly(true) end
+    updatePad()
+end, "fly", Enum.KeyCode.F)
  
 addSlider(pageMove, "Fly speed", 10, 200, S.flySpeed, function(v)
     S.flySpeed = v
+end)
+ 
+addToggle(pageMove, "Fly follows camera", S.flyFollowCam, function(v)
+    S.flyFollowCam = v
+end)
+ 
+addToggle(pageMove, "Fly UP/DOWN buttons", S.flyPad, function(v)
+    S.flyPad = v
+    updatePad()
 end)
  
 addToggle(pageMove, "Speed hack", false, function(v)
@@ -634,7 +1014,7 @@ addToggle(pageMove, "Speed hack", false, function(v)
         S.speed = false
         if hum then hum.WalkSpeed = defaults.walk end
     end
-end)
+end, "speed")
  
 addSlider(pageMove, "Walk speed", 16, 250, S.speedVal, function(v)
     S.speedVal = v
@@ -655,7 +1035,7 @@ addToggle(pageMove, "Jump power", false, function(v)
             hum.JumpPower = defaults.jump
         end
     end
-end)
+end, "jump")
  
 addSlider(pageMove, "Jump value", 50, 300, S.jumpVal, function(v)
     S.jumpVal = v
@@ -663,7 +1043,7 @@ end)
  
 addToggle(pageMove, "Infinite jump", false, function(v)
     S.infJump = v
-end)
+end, "infjump")
  
 addSection(pagePlayer, "Player")
  
@@ -676,13 +1056,13 @@ addButton(pagePlayer, "Reset gravity", function()
     gravitySlider.set(math.floor(defaultGravity + 0.5))
 end)
  
-addToggle(pagePlayer, "Click teleport  (Ctrl + click)", false, function(v)
+addToggle(pagePlayer, "Click TP (Ctrl+click)", false, function(v)
     S.clickTp = v
-end)
+end, "clicktp")
  
 addToggle(pagePlayer, "Anti AFK", false, function(v)
     S.antiAfk = v
-end)
+end, "antiafk")
  
 addButton(pagePlayer, "Reset character", function()
     local hum = getHum()
@@ -693,7 +1073,7 @@ addSection(pageVisual, "Visual")
  
 addToggle(pageVisual, "Fullbright", false, function(v)
     setFullbright(v)
-end)
+end, "fullbright")
  
 local fovSlider = addSlider(pageVisual, "Field of view", 40, 120, 70, function(v)
     S.fov = v
@@ -708,7 +1088,11 @@ end)
  
 addSection(pageMisc, "Misc")
  
-addInfo(pageMisc, "K  show or hide the menu\nN  toggle noclip\nF  toggle fly\nSpace / Shift  fly up and down", 84)
+addBindRow(pageMisc, "Menu key", "menu", Enum.KeyCode.K, function()
+    setOpen(not opened)
+end)
+ 
+addInfo(pageMisc, "Click a key box, then press the key you want.\nEsc cancels, Backspace clears the bind.\nFly: Space up, Shift down (or the UP/DOWN buttons).", 84)
  
 addButton(pageMisc, "Rejoin server", function()
     TeleportService:Teleport(game.PlaceId, player)
@@ -719,21 +1103,6 @@ addButton(pageMisc, "Unload menu", function()
 end)
  
 selectTab("Movement")
- 
-local opened = true
- 
-local function setOpen(v)
-    opened = v
-    if v then
-        main.Visible = true
-        tween(scale, {Scale = 1}, 0.35, Enum.EasingStyle.Back)
-    else
-        tween(scale, {Scale = 0}, 0.2)
-        task.delay(0.22, function()
-            if not opened then main.Visible = false end
-        end)
-    end
-end
  
 connect(closeBtn.Activated, function()
     setOpen(false)
@@ -767,17 +1136,6 @@ connect(UserInputService.InputEnded, function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1
         or input.UserInputType == Enum.UserInputType.Touch then
         dragging = false
-    end
-end)
- 
-connect(UserInputService.InputBegan, function(input, processed)
-    if processed then return end
-    if input.KeyCode == Enum.KeyCode.K then
-        setOpen(not opened)
-    elseif input.KeyCode == Enum.KeyCode.N then
-        tNoclip.set(not tNoclip.get())
-    elseif input.KeyCode == Enum.KeyCode.F then
-        tFly.set(not tFly.get())
     end
 end)
  
@@ -825,9 +1183,8 @@ connect(RunService.Stepped, function()
     end
 end)
  
-connect(RunService.Heartbeat, function()
+connect(RunService.Heartbeat, function(dt)
     local hum = getHum()
-    local root = getRoot()
  
     if hum then
         if S.speed then
@@ -839,35 +1196,8 @@ connect(RunService.Heartbeat, function()
         end
     end
  
-    if S.fly and hum and root then
-        if not flyBV or flyBV.Parent ~= root then
-            stopFly()
-            flyBV = new("BodyVelocity", {
-                MaxForce = Vector3.new(1e9, 1e9, 1e9),
-                Velocity = Vector3.zero,
-            }, root)
-            flyBG = new("BodyGyro", {
-                MaxTorque = Vector3.new(1e9, 1e9, 1e9),
-                P = 9e4,
-            }, root)
-        end
- 
-        local up = 0
-        if not UserInputService:GetFocusedTextBox() then
-            if UserInputService:IsKeyDown(Enum.KeyCode.Space) then up = up + 1 end
-            if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then up = up - 1 end
-        end
- 
-        flyBV.Velocity = hum.MoveDirection * S.flySpeed + Vector3.new(0, up * S.flySpeed, 0)
- 
-        local cam = workspace.CurrentCamera
-        if cam then
-            local look = cam.CFrame.LookVector
-            local flat = Vector3.new(look.X, 0, look.Z)
-            if flat.Magnitude > 0.01 then
-                flyBG.CFrame = CFrame.new(root.Position, root.Position + flat)
-            end
-        end
+    if S.fly then
+        flyStep(dt)
     end
 end)
  
@@ -883,7 +1213,7 @@ env.__AstralCleanup = function()
     S.noclip = false
     S.fly = false
     restoreNoclip()
-    stopFly()
+    stopFly(true)
  
     local hum = getHum()
     if hum then
