@@ -21,9 +21,10 @@ local noclip = false
 local original = {}
 
 local COLORS = {
-    off = {a = Color3.fromRGB(255, 70, 100), b = Color3.fromRGB(150, 80, 255), bg = Color3.fromRGB(24, 22, 32)},
-    on  = {a = Color3.fromRGB(60, 255, 160), b = Color3.fromRGB(60, 200, 255), bg = Color3.fromRGB(18, 36, 34)},
+    off = {a = Color3.fromRGB(255, 70, 100), b = Color3.fromRGB(150, 80, 255), bg = Color3.fromRGB(20, 18, 28)},
+    on  = {a = Color3.fromRGB(60, 255, 160), b = Color3.fromRGB(60, 200, 255), bg = Color3.fromRGB(14, 30, 30)},
 }
+local currentPal = COLORS.off
 
 local function tween(obj, props, time, style)
     TweenService:Create(
@@ -56,8 +57,8 @@ mount()
 
 local main = Instance.new("TextButton")
 main.Name = "Toggle"
-main.Size = UDim2.fromOffset(150, 52)
-main.Position = UDim2.new(0.5, -75, 0.5, -26)
+main.Size = UDim2.fromOffset(170, 60)
+main.Position = UDim2.new(0.5, -85, 0.5, -30)
 main.BackgroundColor3 = COLORS.off.bg
 main.AutoButtonColor = false
 main.Text = ""
@@ -74,10 +75,43 @@ stroke.Thickness = 2
 stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 local strokeGrad = Instance.new("UIGradient", stroke)
 
+local bgGlow = Instance.new("Frame", main)
+bgGlow.Name = "BackgroundGlow"
+bgGlow.Size = UDim2.new(1, 0, 1, 0)
+bgGlow.BackgroundColor3 = Color3.new(1, 1, 1)
+bgGlow.BackgroundTransparency = 0.75
+bgGlow.BorderSizePixel = 0
+bgGlow.ZIndex = 1
+Instance.new("UICorner", bgGlow).CornerRadius = UDim.new(0, 14)
+local bgGrad = Instance.new("UIGradient", bgGlow)
+bgGrad.Transparency = NumberSequence.new({
+    NumberSequenceKeypoint.new(0, 0.2),
+    NumberSequenceKeypoint.new(0.5, 0.85),
+    NumberSequenceKeypoint.new(1, 0.2),
+})
+
+local particles = {}
+local rng = Random.new()
+for i = 1, 10 do
+    local p = Instance.new("Frame", main)
+    local s = rng:NextInteger(2, 4)
+    p.Size = UDim2.fromOffset(s, s)
+    p.BorderSizePixel = 0
+    p.ZIndex = 2
+    Instance.new("UICorner", p).CornerRadius = UDim.new(1, 0)
+    particles[i] = {
+        frame = p,
+        x = rng:NextNumber(0.12, 0.92),
+        speed = rng:NextNumber(0.12, 0.3),
+        offset = rng:NextNumber(0, 1),
+    }
+end
+
 local dot = Instance.new("Frame", main)
 dot.Size = UDim2.fromOffset(12, 12)
 dot.Position = UDim2.new(0, 16, 0.5, -6)
 dot.BorderSizePixel = 0
+dot.ZIndex = 3
 Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
 
 local ring = Instance.new("Frame", main)
@@ -85,6 +119,7 @@ ring.Size = UDim2.fromOffset(20, 20)
 ring.Position = UDim2.new(0, 12, 0.5, -10)
 ring.BackgroundTransparency = 1
 ring.BorderSizePixel = 0
+ring.ZIndex = 3
 Instance.new("UICorner", ring).CornerRadius = UDim.new(1, 0)
 local ringStroke = Instance.new("UIStroke", ring)
 ringStroke.Thickness = 2
@@ -92,25 +127,29 @@ ringStroke.Transparency = 1
 
 local title = Instance.new("TextLabel", main)
 title.BackgroundTransparency = 1
-title.Position = UDim2.fromOffset(42, 8)
-title.Size = UDim2.fromOffset(100, 18)
+title.Position = UDim2.fromOffset(42, 11)
+title.Size = UDim2.fromOffset(120, 18)
 title.Font = Enum.Font.GothamBold
 title.TextSize = 16
 title.TextXAlignment = Enum.TextXAlignment.Left
 title.TextColor3 = Color3.new(1, 1, 1)
 title.Text = "NOCLIP"
+title.ZIndex = 3
 
 local status = Instance.new("TextLabel", main)
 status.BackgroundTransparency = 1
-status.Position = UDim2.fromOffset(42, 27)
-status.Size = UDim2.fromOffset(100, 16)
+status.Position = UDim2.fromOffset(42, 31)
+status.Size = UDim2.fromOffset(120, 16)
 status.Font = Enum.Font.GothamMedium
 status.TextSize = 11
 status.TextXAlignment = Enum.TextXAlignment.Left
+status.ZIndex = 3
 
 local function applyVisual(state)
     local pal = state and COLORS.on or COLORS.off
+    currentPal = pal
     strokeGrad.Color = ColorSequence.new(pal.a, pal.b)
+    bgGrad.Color = ColorSequence.new(pal.a, pal.b)
     ringStroke.Color = pal.a
     status.Text = state and "ENABLED" or "DISABLED"
     tween(main, {BackgroundColor3 = pal.bg}, 0.35)
@@ -139,12 +178,22 @@ tween(scale, {Scale = 1}, 0.5, Enum.EasingStyle.Back)
 connect(RunService.RenderStepped, function()
     local t = os.clock()
     strokeGrad.Rotation = (t * 90) % 360
+    bgGrad.Rotation = (t * (noclip and 60 or 25)) % 360
+
+    local speedMul = noclip and 2.2 or 1
+    for _, p in ipairs(particles) do
+        local frac = (t * p.speed * speedMul + p.offset) % 1
+        p.frame.Position = UDim2.new(p.x, 0, 0.9 - frac * 0.8, 0)
+        p.frame.BackgroundColor3 = currentPal.a
+        p.frame.BackgroundTransparency = 0.25 + frac * 0.75
+    end
+
     if noclip then
-        local p = (math.sin(t * 4) + 1) / 2
-        local size = 18 + p * 10
+        local k = (math.sin(t * 4) + 1) / 2
+        local size = 18 + k * 10
         ring.Size = UDim2.fromOffset(size, size)
         ring.Position = UDim2.new(0, 22 - size / 2, 0.5, -size / 2)
-        ringStroke.Transparency = 0.2 + p * 0.7
+        ringStroke.Transparency = 0.2 + k * 0.7
     else
         ringStroke.Transparency = 1
     end
