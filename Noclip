@@ -216,8 +216,6 @@ end)
 
 local S = {
     noclip = false,
-    fly = false,
-    flySpeed = 1,
     speed = false,
     speedVal = 50,
     jump = false,
@@ -251,104 +249,196 @@ local function restoreNoclip()
     noclipOriginal = {}
 end
 
-local flyData = nil
+-- ===== FLY (logic from Fly GUI V3) =====
+local speeds = 1
+local nowe = false
+local tpwalking = false
 
-local function stopFly(restore)
-    local d = flyData
-    flyData = nil
-    if not d then return end
+local flyToggle
+local flySlider
 
-    pcall(function() d.bv:Destroy() end)
-    pcall(function() d.bg:Destroy() end)
+local flyCtrl = {f = 0, b = 0, l = 0, r = 0}
+local flyLast = {f = 0, b = 0, l = 0, r = 0}
+local flyMax = 50
+local flySpeedNow = 0
+local flyBodies = nil
 
-    if restore and d.hum and d.hum.Parent then
-        pcall(function() d.hum.PlatformStand = false end)
-        pcall(function() d.hum:ChangeState(Enum.HumanoidStateType.GettingUp) end)
-    end
+-- your tpwalking block, unchanged
+local function startTpWalk()
+	tpwalking = false
+	for i = 1, speeds do
+		spawn(function()
+
+			local hb = game:GetService("RunService").Heartbeat	
+
+
+			tpwalking = true
+			local chr = game.Players.LocalPlayer.Character
+			local hum = chr and chr:FindFirstChildWhichIsA("Humanoid")
+			while tpwalking and hb:Wait() and chr and hum and hum.Parent do
+				if hum.MoveDirection.Magnitude > 0 then
+					chr:TranslateBy(hum.MoveDirection)
+				end
+			end
+
+		end)
+	end
 end
 
-local function startFly(char, hum, root)
-    local d = {char = char, hum = hum, root = root}
-
-    d.bv = Instance.new("BodyVelocity")
-    d.bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
-    d.bv.Velocity = Vector3.zero
-    d.bv.Parent = root
-
-    d.bg = Instance.new("BodyGyro")
-    d.bg.MaxTorque = Vector3.new(1e9, 1e9, 1e9)
-    d.bg.P = 9e4
-    d.bg.CFrame = root.CFrame
-    d.bg.Parent = root
-
-    hum.PlatformStand = true
-    flyData = d
+-- "plus" handler
+local function flySpeedUp()
+	if speeds >= 50 then return end
+	speeds = speeds + 1
+	if flySlider then flySlider.set(speeds) end
+	if nowe == true then
+		startTpWalk()
+	end
 end
 
--- Fly based on the tpwalking method: every frame the character is moved
--- with TranslateBy along the move direction, multiplied by "speeds"
--- (S.flySpeed). Space / LeftShift move up / down.
-local function getMoveDir(hum, cam)
-    local dir = hum.MoveDirection
-
-    -- fallback: read WASD directly (MoveDirection can be zero while PlatformStand is on)
-    if dir.Magnitude < 0.01 and not UserInputService:GetFocusedTextBox() then
-        local f = cam.CFrame.LookVector
-        local r = cam.CFrame.RightVector
-        f = Vector3.new(f.X, 0, f.Z)
-        r = Vector3.new(r.X, 0, r.Z)
-        if f.Magnitude > 0.01 then f = f.Unit end
-        if r.Magnitude > 0.01 then r = r.Unit end
-
-        local v = Vector3.zero
-        if UserInputService:IsKeyDown(Enum.KeyCode.W) then v = v + f end
-        if UserInputService:IsKeyDown(Enum.KeyCode.S) then v = v - f end
-        if UserInputService:IsKeyDown(Enum.KeyCode.D) then v = v + r end
-        if UserInputService:IsKeyDown(Enum.KeyCode.A) then v = v - r end
-        if v.Magnitude > 0.01 then dir = v.Unit end
-    end
-
-    return dir
+-- "minus" handler (your code; the speed.Text lines are replaced by the slider)
+local function flySpeedDown()
+	if speeds == 1 then
+		-- speed.Text = 'cannot be less than 1'
+	else
+		speeds = speeds - 1
+		if flySlider then flySlider.set(speeds) end
+		if nowe == true then
+			startTpWalk()
+		end
+	end
 end
 
-local function flyStep(dt)
-    local char = player.Character
-    local hum = getHum()
-    local root = getRoot()
-    local cam = workspace.CurrentCamera
-    if not (char and hum and root and cam) then return end
-    if hum.Health <= 0 then return end
+-- "onof" handler: turn fly on
+local function flyOn()
+	local chr = player.Character
+	local hum = chr and chr:FindFirstChildOfClass("Humanoid")
+	local torso = chr and (chr:FindFirstChild("UpperTorso") or chr:FindFirstChild("Torso") or chr:FindFirstChild("HumanoidRootPart"))
+	if not (chr and hum and torso) then return false end
 
-    if flyData and (flyData.root ~= root or flyData.bv.Parent ~= root or flyData.bg.Parent ~= root) then
-        stopFly(false)
-    end
-    if not flyData then
-        local ok = pcall(startFly, char, hum, root)
-        if not ok or not flyData then return end
-    end
+	nowe = true
+	startTpWalk()
 
-    local up = 0
-    if not UserInputService:GetFocusedTextBox() then
-        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then up = up + 1 end
-        if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then up = up - 1 end
-    end
+	local animate = chr:FindFirstChild("Animate")
+	if animate then animate.Disabled = true end
+	for _, v in ipairs(hum:GetPlayingAnimationTracks()) do
+		v:AdjustSpeed(0)
+	end
+	for _, v in ipairs(Enum.HumanoidStateType:GetEnumItems()) do
+		pcall(function() hum:SetStateEnabled(v, false) end)
+	end
+	hum:ChangeState(Enum.HumanoidStateType.Swimming)
 
-    local dir = getMoveDir(hum, cam) + Vector3.new(0, up, 0)
-    if dir.Magnitude > 1 then
-        dir = dir.Unit
-    end
-    if dir.Magnitude > 0 then
-        char:TranslateBy(dir * S.flySpeed * math.min(dt * 60, 3))
-    end
+	local bg = Instance.new("BodyGyro")
+	bg.P = 9e4
+	bg.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
+	bg.CFrame = torso.CFrame
+	bg.Parent = torso
 
-    flyData.bv.Velocity = Vector3.zero
+	local bv = Instance.new("BodyVelocity")
+	bv.Velocity = Vector3.new(0, 0.1, 0)
+	bv.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+	bv.Parent = torso
 
-    local look = cam.CFrame.LookVector
-    local flat = Vector3.new(look.X, 0, look.Z)
-    if flat.Magnitude > 0.01 then
-        flyData.bg.CFrame = CFrame.new(root.Position, root.Position + flat)
-    end
+	hum.PlatformStand = true
+
+	flyCtrl = {f = 0, b = 0, l = 0, r = 0}
+	flyLast = {f = 0, b = 0, l = 0, r = 0}
+	flySpeedNow = 0
+	flyBodies = {bg = bg, bv = bv, hum = hum, chr = chr}
+	return true
 end
+
+-- "onof" handler: turn fly off
+local function flyOff()
+	nowe = false
+	tpwalking = false
+
+	local b = flyBodies
+	flyBodies = nil
+	if not b then return end
+
+	pcall(function() b.bg:Destroy() end)
+	pcall(function() b.bv:Destroy() end)
+
+	local hum = b.hum
+	if hum and hum.Parent then
+		pcall(function() hum.PlatformStand = false end)
+		pcall(function()
+			local animate = b.chr and b.chr:FindFirstChild("Animate")
+			if animate then animate.Disabled = false end
+		end)
+		pcall(function()
+			for _, v in ipairs(hum:GetPlayingAnimationTracks()) do
+				v:AdjustSpeed(1)
+			end
+		end)
+		pcall(function()
+			for _, v in ipairs(Enum.HumanoidStateType:GetEnumItems()) do
+				pcall(function() hum:SetStateEnabled(v, true) end)
+			end
+		end)
+		pcall(function() hum:ChangeState(Enum.HumanoidStateType.RunningNoPhysics) end)
+	end
+end
+
+-- flight loop (BodyGyro / BodyVelocity, same formulas as Fly GUI V3)
+connect(RunService.RenderStepped, function(dt)
+	if not nowe then return end
+
+	local b = flyBodies
+	local cam = workspace.CurrentCamera
+	if not (b and cam and b.chr == player.Character and b.hum.Parent and b.hum.Health > 0 and b.bv.Parent and b.bg.Parent) then
+		if flyToggle then flyToggle.set(false) else flyOff() end
+		return
+	end
+
+	local typing = UserInputService:GetFocusedTextBox() ~= nil
+	local function down(k) return (not typing) and UserInputService:IsKeyDown(k) end
+
+	flyCtrl.f = down(Enum.KeyCode.W) and 1 or 0
+	flyCtrl.b = down(Enum.KeyCode.S) and -1 or 0
+	flyCtrl.l = down(Enum.KeyCode.A) and -1 or 0
+	flyCtrl.r = down(Enum.KeyCode.D) and 1 or 0
+
+	-- up / down (Space / LeftShift), like the up/down buttons: CFrame.new(0, +-1, 0)
+	local root = b.chr:FindFirstChild("HumanoidRootPart")
+	if root then
+		local step = math.min(dt * 60, 3)
+		if down(Enum.KeyCode.Space) then
+			root.CFrame = root.CFrame * CFrame.new(0, step, 0)
+		end
+		if down(Enum.KeyCode.LeftShift) then
+			root.CFrame = root.CFrame * CFrame.new(0, -step, 0)
+		end
+	end
+
+	local ctrl, lastctrl = flyCtrl, flyLast
+	local bv, bg = b.bv, b.bg
+	local camCF = cam.CFrame
+
+	if ctrl.l + ctrl.r ~= 0 or ctrl.f + ctrl.b ~= 0 then
+		flySpeedNow = flySpeedNow + .5 + (flySpeedNow / flyMax)
+		if flySpeedNow > flyMax then
+			flySpeedNow = flyMax
+		end
+	elseif not (ctrl.l + ctrl.r ~= 0 or ctrl.f + ctrl.b ~= 0) and flySpeedNow ~= 0 then
+		flySpeedNow = flySpeedNow - 1
+		if flySpeedNow < 0 then
+			flySpeedNow = 0
+		end
+	end
+
+	if (ctrl.l + ctrl.r) ~= 0 or (ctrl.f + ctrl.b) ~= 0 then
+		bv.Velocity = ((camCF.LookVector * (ctrl.f + ctrl.b)) + ((camCF * CFrame.new(ctrl.l + ctrl.r, (ctrl.f + ctrl.b) * .2, 0).p) - camCF.p)) * flySpeedNow
+		flyLast = {f = ctrl.f, b = ctrl.b, l = ctrl.l, r = ctrl.r}
+	elseif (ctrl.l + ctrl.r) == 0 and (ctrl.f + ctrl.b) == 0 and flySpeedNow ~= 0 then
+		bv.Velocity = ((camCF.LookVector * (lastctrl.f + lastctrl.b)) + ((camCF * CFrame.new(lastctrl.l + lastctrl.r, (lastctrl.f + lastctrl.b) * .2, 0).p) - camCF.p)) * flySpeedNow
+	else
+		bv.Velocity = Vector3.new(0, 0, 0)
+	end
+
+	bg.CFrame = camCF * CFrame.Angles(-math.rad((ctrl.f + ctrl.b) * 50 * flySpeedNow / flyMax), 0, 0)
+end)
 
 local lightSaved
 local function setFullbright(on)
@@ -882,26 +972,26 @@ addToggle(pageMove, "Noclip", false, function(v)
     if not v then restoreNoclip() end
 end, "noclip", Enum.KeyCode.N)
 
-local flySlider
-
-addToggle(pageMove, "Fly", false, function(v)
-    S.fly = v
-    if not v then stopFly(true) end
+flyToggle = addToggle(pageMove, "Fly", false, function(v)
+    if v then
+        if not flyOn() then
+            flyToggle.set(false)
+        end
+    else
+        flyOff()
+    end
 end, "fly", Enum.KeyCode.F)
 
-flySlider = addSlider(pageMove, "Fly speed", 1, 50, S.flySpeed, function(v)
-    S.flySpeed = math.max(v, 1)
+flySlider = addSlider(pageMove, "Fly speed", 1, 50, speeds, function(v)
+    speeds = math.max(v, 1)
+    if nowe == true then
+        startTpWalk()
+    end
 end)
 
-addBindRow(pageMove, "Fly speed +", "flyplus", nil, function()
-    S.flySpeed = math.min(S.flySpeed + 1, 50)
-    flySlider.set(S.flySpeed)
-end)
+addBindRow(pageMove, "Fly speed +", "flyplus", nil, flySpeedUp)
 
-addBindRow(pageMove, "Fly speed -", "flyminus", nil, function()
-    S.flySpeed = math.max(S.flySpeed - 1, 1)
-    flySlider.set(S.flySpeed)
-end)
+addBindRow(pageMove, "Fly speed -", "flyminus", nil, flySpeedDown)
 
 addToggle(pageMove, "Speed hack", false, function(v)
     local hum = getHum()
@@ -990,7 +1080,7 @@ addBindRow(pageMisc, "Menu key", "menu", Enum.KeyCode.K, function()
     setOpen(not opened)
 end)
 
-addInfo(pageMisc, "Click a key box, then press the key you want.\nEsc cancels, Backspace clears the bind.\nFly: Space up, Shift down.", 72)
+addInfo(pageMisc, "Click a key box, then press the key you want.\nEsc cancels, Backspace clears the bind.\nFly: WASD, Space up, Shift down.", 72)
 
 addButton(pageMisc, "Rejoin server", function()
     TeleportService:Teleport(game.PlaceId, player)
@@ -1094,9 +1184,6 @@ connect(RunService.Heartbeat, function(dt)
         end
     end
 
-    if S.fly then
-        flyStep(dt)
-    end
 end)
 
 connect(RunService.RenderStepped, function()
@@ -1109,9 +1196,10 @@ end)
 
 env.__AstralCleanup = function()
     S.noclip = false
-    S.fly = false
     restoreNoclip()
-    stopFly(true)
+    nowe = false
+    tpwalking = false
+    flyOff()
 
     local hum = getHum()
     if hum then
