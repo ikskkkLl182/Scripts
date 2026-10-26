@@ -1,292 +1,76 @@
+-- Mobile Noclip (LocalScript)
+-- Creates its own on-screen button. No Russian text.
+
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-local TweenService = game:GetService("TweenService")
 
 local player = Players.LocalPlayer
-local env = (getgenv and getgenv()) or _G
+local playerGui = player:WaitForChild("PlayerGui")
 
-if env.__NoclipCleanup then
-    pcall(env.__NoclipCleanup)
+local noclipEnabled = false
+
+-- ===== GUI =====
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "NoclipGui"
+screenGui.ResetOnSpawn = false
+screenGui.IgnoreGuiInset = true
+screenGui.DisplayOrder = 999
+screenGui.Parent = playerGui
+
+local button = Instance.new("TextButton")
+button.Name = "NoclipButton"
+button.Size = UDim2.new(0, 80, 0, 80)
+button.Position = UDim2.new(0, 20, 0.5, -40)
+button.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+button.BackgroundTransparency = 0.3
+button.TextColor3 = Color3.fromRGB(255, 255, 255)
+button.Text = "NOCLIP"
+button.TextScaled = true
+button.Font = Enum.Font.GothamBold
+button.AutoButtonColor = true
+button.BorderSizePixel = 0
+button.Active = true
+button.Parent = screenGui
+
+local corner = Instance.new("UICorner")
+corner.CornerRadius = UDim.new(0.3, 0)
+corner.Parent = button
+
+-- ===== NOCLIP LOGIC =====
+local function setNoclip(character, state)
+	for _, part in ipairs(character:GetDescendants()) do
+		if part:IsA("BasePart") then
+			part.CanCollide = not state
+		end
+	end
 end
 
-local connections = {}
-local function connect(signal, fn)
-    local c = signal:Connect(fn)
-    table.insert(connections, c)
-    return c
+local function toggleNoclip()
+	noclipEnabled = not noclipEnabled
+
+	if noclipEnabled then
+		button.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
+		button.Text = "ON"
+	else
+		button.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+		button.Text = "NOCLIP"
+	end
+
+	if player.Character then
+		setNoclip(player.Character, noclipEnabled)
+	end
 end
 
-local noclip = false
-local original = {}
+button.MouseButton1Click:Connect(toggleNoclip)
 
-local COLORS = {
-    off = {a = Color3.fromRGB(255, 70, 100), b = Color3.fromRGB(150, 80, 255), bg = Color3.fromRGB(20, 18, 28)},
-    on  = {a = Color3.fromRGB(60, 255, 160), b = Color3.fromRGB(60, 200, 255), bg = Color3.fromRGB(14, 30, 30)},
-}
-local currentPal = COLORS.off
-
-local function tween(obj, props, time, style)
-    TweenService:Create(
-        obj,
-        TweenInfo.new(time or 0.25, style or Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-        props
-    ):Play()
-end
-
-local gui = Instance.new("ScreenGui")
-gui.Name = "AstralEngine_Noclip"
-gui.ResetOnSpawn = false
-gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-
-local function mount()
-    local targets = {
-        function() return player:FindFirstChild("PlayerGui") or player:WaitForChild("PlayerGui", 5) end,
-        function() return gethui and gethui() end,
-        function() return game:GetService("CoreGui") end,
-    }
-    for _, get in ipairs(targets) do
-        local ok, parent = pcall(get)
-        if ok and parent then
-            local ok2 = pcall(function() gui.Parent = parent end)
-            if ok2 and gui.Parent then return end
-        end
-    end
-end
-mount()
-
-local main = Instance.new("TextButton")
-main.Name = "Toggle"
-main.Size = UDim2.fromOffset(170, 60)
-main.Position = UDim2.new(0.5, -85, 0.5, -30)
-main.BackgroundColor3 = COLORS.off.bg
-main.AutoButtonColor = false
-main.Text = ""
-main.BorderSizePixel = 0
-main.Active = true
-main.Parent = gui
-Instance.new("UICorner", main).CornerRadius = UDim.new(0, 14)
-
-local scale = Instance.new("UIScale", main)
-scale.Scale = 0
-
-local stroke = Instance.new("UIStroke", main)
-stroke.Thickness = 2
-stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-local strokeGrad = Instance.new("UIGradient", stroke)
-
-local bgGlow = Instance.new("Frame", main)
-bgGlow.Name = "BackgroundGlow"
-bgGlow.Size = UDim2.new(1, 0, 1, 0)
-bgGlow.BackgroundColor3 = Color3.new(1, 1, 1)
-bgGlow.BackgroundTransparency = 0.75
-bgGlow.BorderSizePixel = 0
-bgGlow.ZIndex = 1
-Instance.new("UICorner", bgGlow).CornerRadius = UDim.new(0, 14)
-local bgGrad = Instance.new("UIGradient", bgGlow)
-bgGrad.Transparency = NumberSequence.new({
-    NumberSequenceKeypoint.new(0, 0.2),
-    NumberSequenceKeypoint.new(0.5, 0.85),
-    NumberSequenceKeypoint.new(1, 0.2),
-})
-
-local particles = {}
-local rng = Random.new()
-for i = 1, 10 do
-    local p = Instance.new("Frame", main)
-    local s = rng:NextInteger(2, 4)
-    p.Size = UDim2.fromOffset(s, s)
-    p.BorderSizePixel = 0
-    p.ZIndex = 2
-    Instance.new("UICorner", p).CornerRadius = UDim.new(1, 0)
-    particles[i] = {
-        frame = p,
-        x = rng:NextNumber(0.12, 0.92),
-        speed = rng:NextNumber(0.12, 0.3),
-        offset = rng:NextNumber(0, 1),
-    }
-end
-
-local dot = Instance.new("Frame", main)
-dot.Size = UDim2.fromOffset(12, 12)
-dot.Position = UDim2.new(0, 16, 0.5, -6)
-dot.BorderSizePixel = 0
-dot.ZIndex = 3
-Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
-
-local ring = Instance.new("Frame", main)
-ring.Size = UDim2.fromOffset(20, 20)
-ring.Position = UDim2.new(0, 12, 0.5, -10)
-ring.BackgroundTransparency = 1
-ring.BorderSizePixel = 0
-ring.ZIndex = 3
-Instance.new("UICorner", ring).CornerRadius = UDim.new(1, 0)
-local ringStroke = Instance.new("UIStroke", ring)
-ringStroke.Thickness = 2
-ringStroke.Transparency = 1
-
-local title = Instance.new("TextLabel", main)
-title.BackgroundTransparency = 1
-title.Position = UDim2.fromOffset(42, 11)
-title.Size = UDim2.fromOffset(120, 18)
-title.Font = Enum.Font.GothamBold
-title.TextSize = 16
-title.TextXAlignment = Enum.TextXAlignment.Left
-title.TextColor3 = Color3.new(1, 1, 1)
-title.Text = "NOCLIP"
-title.ZIndex = 3
-
-local status = Instance.new("TextLabel", main)
-status.BackgroundTransparency = 1
-status.Position = UDim2.fromOffset(42, 31)
-status.Size = UDim2.fromOffset(120, 16)
-status.Font = Enum.Font.GothamMedium
-status.TextSize = 11
-status.TextXAlignment = Enum.TextXAlignment.Left
-status.ZIndex = 3
-
-local function applyVisual(state)
-    local pal = state and COLORS.on or COLORS.off
-    currentPal = pal
-    strokeGrad.Color = ColorSequence.new(pal.a, pal.b)
-    bgGrad.Color = ColorSequence.new(pal.a, pal.b)
-    ringStroke.Color = pal.a
-    status.Text = state and "ENABLED" or "DISABLED"
-    tween(main, {BackgroundColor3 = pal.bg}, 0.35)
-    tween(dot, {BackgroundColor3 = pal.a}, 0.35)
-    tween(status, {TextColor3 = pal.a}, 0.35)
-    stroke.Thickness = 4
-    tween(stroke, {Thickness = 2}, 0.4)
-end
-
-local function setNoclip(state)
-    noclip = state
-    applyVisual(state)
-    if not state then
-        for part, value in pairs(original) do
-            if part and part.Parent then
-                part.CanCollide = value
-            end
-        end
-        original = {}
-    end
-end
-
-applyVisual(false)
-tween(scale, {Scale = 1}, 0.5, Enum.EasingStyle.Back)
-
-connect(RunService.RenderStepped, function()
-    local t = os.clock()
-    strokeGrad.Rotation = (t * 90) % 360
-    bgGrad.Rotation = (t * (noclip and 60 or 25)) % 360
-
-    local speedMul = noclip and 2.2 or 1
-    for _, p in ipairs(particles) do
-        local frac = (t * p.speed * speedMul + p.offset) % 1
-        p.frame.Position = UDim2.new(p.x, 0, 0.9 - frac * 0.8, 0)
-        p.frame.BackgroundColor3 = currentPal.a
-        p.frame.BackgroundTransparency = 0.25 + frac * 0.75
-    end
-
-    if noclip then
-        local k = (math.sin(t * 4) + 1) / 2
-        local size = 18 + k * 10
-        ring.Size = UDim2.fromOffset(size, size)
-        ring.Position = UDim2.new(0, 22 - size / 2, 0.5, -size / 2)
-        ringStroke.Transparency = 0.2 + k * 0.7
-    else
-        ringStroke.Transparency = 1
-    end
+-- ===== KEEP COLLISIONS OFF =====
+RunService.Stepped:Connect(function()
+	if not noclipEnabled then return end
+	local character = player.Character
+	if not character then return end
+	for _, part in ipairs(character:GetDescendants()) do
+		if part:IsA("BasePart") and part.CanCollide then
+			part.CanCollide = false
+		end
+	end
 end)
-
-local dragging, moved, hovering = false, false, false
-local dragInput, dragStart, startPos
-
-connect(main.MouseEnter, function()
-    hovering = true
-    if not dragging then tween(scale, {Scale = 1.05}, 0.15) end
-end)
-connect(main.MouseLeave, function()
-    hovering = false
-    if not dragging then tween(scale, {Scale = 1}, 0.15) end
-end)
-
-connect(main.InputBegan, function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1
-        or input.UserInputType == Enum.UserInputType.Touch then
-        dragging = true
-        moved = false
-        dragInput = input
-        dragStart = input.Position
-        startPos = main.Position
-        tween(scale, {Scale = 0.93}, 0.08)
-    end
-end)
-
-connect(main.InputChanged, function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement
-        or input.UserInputType == Enum.UserInputType.Touch then
-        dragInput = input
-    end
-end)
-
-connect(UserInputService.InputChanged, function(input)
-    if dragging and input == dragInput then
-        local delta = input.Position - dragStart
-        if delta.Magnitude > 8 then moved = true end
-        if moved then
-            main.Position = UDim2.new(
-                startPos.X.Scale, startPos.X.Offset + delta.X,
-                startPos.Y.Scale, startPos.Y.Offset + delta.Y
-            )
-        end
-    end
-end)
-
-connect(UserInputService.InputEnded, function(input)
-    if dragging and (input.UserInputType == Enum.UserInputType.MouseButton1
-        or input.UserInputType == Enum.UserInputType.Touch) then
-        dragging = false
-        tween(scale, {Scale = hovering and 1.05 or 1}, 0.25, Enum.EasingStyle.Back)
-    end
-end)
-
-connect(main.Activated, function()
-    if not moved then
-        setNoclip(not noclip)
-    end
-end)
-
-connect(UserInputService.InputBegan, function(input, processed)
-    if processed then return end
-    if input.KeyCode == Enum.KeyCode.N then
-        setNoclip(not noclip)
-    end
-end)
-
-connect(RunService.Stepped, function()
-    local char = player.Character
-    if noclip and char then
-        for _, part in ipairs(char:GetDescendants()) do
-            if part:IsA("BasePart") then
-                if original[part] == nil then
-                    original[part] = part.CanCollide
-                end
-                part.CanCollide = false
-            end
-        end
-    end
-end)
-
-env.__NoclipCleanup = function()
-    noclip = false
-    for part, value in pairs(original) do
-        if part and part.Parent then
-            part.CanCollide = value
-        end
-    end
-    for _, c in ipairs(connections) do
-        pcall(function() c:Disconnect() end)
-    end
-    gui:Destroy()
-end
