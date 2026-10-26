@@ -1,9 +1,10 @@
--- Mobile Noclip - polished UI (LocalScript)
--- All comments in English. No Russian text in code.
+-- Mobile Noclip - compact draggable rectangle button
+-- English comments only. No Russian text.
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -26,11 +27,11 @@ screenGui.IgnoreGuiInset = true
 screenGui.DisplayOrder = 999
 screenGui.Parent = playerGui
 
--- Container (holds shadow, ring, button)
+-- Container (holds shadow, ring, button — everything moves together)
 local container = Instance.new("Frame")
 container.Name = "Container"
-container.Size = UDim2.new(0, 84, 0, 84)
-container.Position = UDim2.new(0, 22, 0.5, -42)
+container.Size = UDim2.new(0, 60, 0, 34)
+container.Position = UDim2.new(0, 20, 0.5, -17)
 container.BackgroundTransparency = 1
 container.Parent = screenGui
 
@@ -38,17 +39,17 @@ container.Parent = screenGui
 local shadow = Instance.new("Frame")
 shadow.Name = "Shadow"
 shadow.Size = UDim2.new(1, 0, 1, 0)
-shadow.Position = UDim2.new(0, 2, 0, 4)
+shadow.Position = UDim2.new(0, 2, 0, 2)
 shadow.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
 shadow.BackgroundTransparency = 0.55
 shadow.BorderSizePixel = 0
 shadow.ZIndex = 1
 shadow.Parent = container
 local shadowCorner = Instance.new("UICorner")
-shadowCorner.CornerRadius = UDim.new(0.32, 0)
+shadowCorner.CornerRadius = UDim.new(0, 8)
 shadowCorner.Parent = shadow
 
--- Pulse ring (expands outward when ON)
+-- Pulse ring
 local ring = Instance.new("Frame")
 ring.Name = "PulseRing"
 ring.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -59,11 +60,11 @@ ring.BorderSizePixel = 0
 ring.ZIndex = 1
 ring.Parent = container
 local ringCorner = Instance.new("UICorner")
-ringCorner.CornerRadius = UDim.new(0.32, 0)
+ringCorner.CornerRadius = UDim.new(0, 8)
 ringCorner.Parent = ring
 local ringStroke = Instance.new("UIStroke")
 ringStroke.Color = RING_COLOR
-ringStroke.Thickness = 3
+ringStroke.Thickness = 2
 ringStroke.Transparency = 1
 ringStroke.Parent = ring
 
@@ -78,18 +79,18 @@ button.BorderSizePixel = 0
 button.AutoButtonColor = false
 button.Text = "NOCLIP"
 button.TextColor3 = Color3.fromRGB(255, 255, 255)
-button.TextScaled = true
-button.Font = Enum.Font.GothamBlack
+button.TextSize = 12
+button.Font = Enum.Font.GothamBold
 button.ZIndex = 3
 button.Parent = container
 
 local buttonCorner = Instance.new("UICorner")
-buttonCorner.CornerRadius = UDim.new(0.32, 0)
+buttonCorner.CornerRadius = UDim.new(0, 8)
 buttonCorner.Parent = button
 
 local buttonStroke = Instance.new("UIStroke")
 buttonStroke.Color = OFF_STROKE
-buttonStroke.Thickness = 2
+buttonStroke.Thickness = 1.5
 buttonStroke.Parent = button
 
 -- Glossy top highlight
@@ -102,15 +103,6 @@ gradient.Transparency = NumberSequence.new({
 })
 gradient.Parent = button
 
--- Text padding (keep text inside button, not on the edges)
-button.TextSize = 20
-local textPadding = Instance.new("UIPadding")
-textPadding.PaddingTop = UDim.new(0.15, 0)
-textPadding.PaddingBottom = UDim.new(0.15, 0)
-textPadding.PaddingLeft = UDim.new(0.08, 0)
-textPadding.PaddingRight = UDim.new(0.08, 0)
-textPadding.Parent = button
-
 -- ===== NOCLIP LOGIC =====
 local function setNoclip(character, state)
 	for _, part in ipairs(character:GetDescendants()) do
@@ -120,49 +112,31 @@ local function setNoclip(character, state)
 	end
 end
 
--- Pulse ring loop
 local function pulseLoop()
 	while pulsing do
 		ring.Size = UDim2.new(1, 0, 1, 0)
 		ringStroke.Transparency = 0.15
-
-		local sizeTween = TweenService:Create(
-			ring,
-			TweenInfo.new(1.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-			{ Size = UDim2.new(1.7, 0, 1.7, 0) }
-		)
-		local strokeTween = TweenService:Create(
-			ringStroke,
-			TweenInfo.new(1.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-			{ Transparency = 1 }
-		)
-		sizeTween:Play()
-		strokeTween:Play()
+		TweenService:Create(ring, TweenInfo.new(1.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			Size = UDim2.new(1.7, 0, 1.7, 0)
+		}):Play()
+		TweenService:Create(ringStroke, TweenInfo.new(1.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			Transparency = 1
+		}):Play()
 		task.wait(0.85)
 	end
 	ring.Size = UDim2.new(1, 0, 1, 0)
 	ringStroke.Transparency = 1
 end
 
--- Smooth color transition
 local function animateColors(on)
-	local bgTween = TweenService:Create(
-		button,
-		TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-		{ BackgroundColor3 = on and ON_BG or OFF_BG }
-	)
-	local strokeTween = TweenService:Create(
-		buttonStroke,
-		TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-		{ Color = on and ON_STROKE or OFF_STROKE }
-	)
-	bgTween:Play()
-	strokeTween:Play()
+	TweenService:Create(button, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{ BackgroundColor3 = on and ON_BG or OFF_BG }):Play()
+	TweenService:Create(buttonStroke, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{ Color = on and ON_STROKE or OFF_STROKE }):Play()
 end
 
 local function toggleNoclip()
 	noclipEnabled = not noclipEnabled
-
 	animateColors(noclipEnabled)
 
 	if noclipEnabled then
@@ -181,24 +155,61 @@ local function toggleNoclip()
 	end
 end
 
--- Press feedback (scale down on touch)
-button.MouseButton1Down:Connect(function()
-	TweenService:Create(
-		button,
-		TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-		{ Size = UDim2.new(0.92, 0, 0.92, 0) }
-	):Play()
+-- ===== DRAG & TAP =====
+local dragging = false
+local dragMoved = false
+local dragStart
+local startX, startY
+local DRAG_THRESHOLD = 8
+
+local function isTouchOrClick(input)
+	return input.UserInputType == Enum.UserInputType.Touch
+		or input.UserInputType == Enum.UserInputType.MouseButton1
+end
+
+button.InputBegan:Connect(function(input)
+	if not isTouchOrClick(input) then return end
+	if dragging then return end
+	dragging = true
+	dragMoved = false
+	dragStart = input.Position
+	-- Convert current position to offset-based (so we can add pixel deltas)
+	local absPos = container.AbsolutePosition
+	local guiPos = screenGui.AbsolutePosition
+	startX = absPos.X - guiPos.X
+	startY = absPos.Y - guiPos.Y
+	container.Position = UDim2.new(0, startX, 0, startY)
 end)
 
-button.MouseButton1Up:Connect(function()
-	TweenService:Create(
-		button,
-		TweenInfo.new(0.12, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
-		{ Size = UDim2.new(1, 0, 1, 0) }
-	):Play()
+UserInputService.InputChanged:Connect(function(input)
+	if not dragging then return end
+	if not dragMoved then
+		local delta = input.Position - dragStart
+		if (delta.X * delta.X + delta.Y * delta.Y) > (DRAG_THRESHOLD * DRAG_THRESHOLD) then
+			dragMoved = true
+		end
+	end
+	if dragMoved and (input.UserInputType == Enum.UserInputType.Touch
+		or input.UserInputType == Enum.UserInputType.MouseMovement) then
+		local delta = input.Position - dragStart
+		local vp = workspace.CurrentCamera.ViewportSize
+		local maxX = math.max(0, vp.X - container.AbsoluteSize.X)
+		local maxY = math.max(0, vp.Y - container.AbsoluteSize.Y)
+		local newX = math.clamp(startX + delta.X, 0, maxX)
+		local newY = math.clamp(startY + delta.Y, 0, maxY)
+		container.Position = UDim2.new(0, newX, 0, newY)
+	end
 end)
 
-button.MouseButton1Click:Connect(toggleNoclip)
+UserInputService.InputEnded:Connect(function(input)
+	if not dragging then return end
+	if not isTouchOrClick(input) then return end
+	if not dragMoved then
+		toggleNoclip()
+	end
+	dragging = false
+	dragMoved = false
+end)
 
 -- ===== KEEP COLLISIONS OFF =====
 RunService.Stepped:Connect(function()
