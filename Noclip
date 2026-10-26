@@ -1,5 +1,5 @@
--- Mobile Noclip - compact draggable rectangle button (v2)
--- Auto-cleans old GUIs on start.
+-- Mobile Noclip - rectangle draggable, snowflakes background, readable text
+-- English comments only.
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -9,22 +9,20 @@ local UserInputService = game:GetService("UserInputService")
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
--- ===== CLEAN OLD GUIS =====
+-- Clean old GUIs
 for _, old in ipairs(playerGui:GetChildren()) do
-	if old.Name == "NoclipGui" then
-		old:Destroy()
-	end
+	if old.Name == "NoclipGui" then old:Destroy() end
 end
 
 local noclipEnabled = false
-local pulsing = false
 
 -- ===== COLORS =====
-local OFF_BG     = Color3.fromRGB(210, 60, 60)
-local ON_BG      = Color3.fromRGB(55, 200, 105)
-local OFF_STROKE = Color3.fromRGB(140, 25, 25)
-local ON_STROKE  = Color3.fromRGB(30, 130, 70)
-local RING_COLOR = Color3.fromRGB(90, 255, 140)
+local OFF_BG     = Color3.fromRGB(200, 45, 45)
+local ON_BG      = Color3.fromRGB(45, 190, 95)
+local OFF_STROKE = Color3.fromRGB(120, 20, 20)
+local ON_STROKE  = Color3.fromRGB(20, 120, 60)
+local OFF_SNOW   = Color3.fromRGB(255, 200, 200)
+local ON_SNOW    = Color3.fromRGB(210, 255, 220)
 
 -- ===== GUI =====
 local screenGui = Instance.new("ScreenGui")
@@ -41,8 +39,8 @@ container.Position = UDim2.new(0, 20, 0.5, -17)
 container.BackgroundTransparency = 1
 container.Parent = screenGui
 
+-- Shadow
 local shadow = Instance.new("Frame")
-shadow.Name = "Shadow"
 shadow.Size = UDim2.new(1, 0, 1, 0)
 shadow.Position = UDim2.new(0, 2, 0, 2)
 shadow.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
@@ -54,56 +52,117 @@ local shadowCorner = Instance.new("UICorner")
 shadowCorner.CornerRadius = UDim.new(0, 8)
 shadowCorner.Parent = shadow
 
-local ring = Instance.new("Frame")
-ring.Name = "PulseRing"
-ring.AnchorPoint = Vector2.new(0.5, 0.5)
-ring.Position = UDim2.new(0.5, 0, 0.5, 0)
-ring.Size = UDim2.new(1, 0, 1, 0)
-ring.BackgroundTransparency = 1
-ring.BorderSizePixel = 0
-ring.ZIndex = 1
-ring.Parent = container
-local ringCorner = Instance.new("UICorner")
-ringCorner.CornerRadius = UDim.new(0, 8)
-ringCorner.Parent = ring
-local ringStroke = Instance.new("UIStroke")
-ringStroke.Color = RING_COLOR
-ringStroke.Thickness = 2
-ringStroke.Transparency = 1
-ringStroke.Parent = ring
+-- Background (colored, holds snow, clips descendants)
+local background = Instance.new("Frame")
+background.Name = "Background"
+background.Size = UDim2.new(1, 0, 1, 0)
+background.Position = UDim2.new(0, 0, 0, 0)
+background.BackgroundColor3 = OFF_BG
+background.BorderSizePixel = 0
+background.ClipsDescendants = true
+background.ZIndex = 2
+background.Parent = container
+local bgCorner = Instance.new("UICorner")
+bgCorner.CornerRadius = UDim.new(0, 8)
+bgCorner.Parent = background
 
+local bgStroke = Instance.new("UIStroke")
+bgStroke.Color = OFF_STROKE
+bgStroke.Thickness = 1.5
+bgStroke.Parent = background
+
+-- Text (readable, with dark outline)
+local textLabel = Instance.new("TextLabel")
+textLabel.Name = "Label"
+textLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+textLabel.Position = UDim2.new(0.5, 0, 0.5, 0)
+textLabel.Size = UDim2.new(1, -6, 1, -4)
+textLabel.BackgroundTransparency = 1
+textLabel.Text = "NOCLIP"
+textLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+textLabel.TextScaled = true
+textLabel.Font = Enum.Font.GothamBlack
+textLabel.ZIndex = 4
+textLabel.Parent = container
+
+local textSizeConstraint = Instance.new("UITextSizeConstraint")
+textSizeConstraint.MaxTextSize = 15
+textSizeConstraint.MinTextSize = 10
+textSizeConstraint.Parent = textLabel
+
+local textStroke = Instance.new("UIStroke")
+textStroke.Color = Color3.fromRGB(0, 0, 0)
+textStroke.Thickness = 2
+textStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+textStroke.Parent = textLabel
+
+-- Invisible button for input (on top)
 local button = Instance.new("TextButton")
-button.Name = "NoclipButton"
+button.Name = "InputButton"
 button.AnchorPoint = Vector2.new(0.5, 0.5)
 button.Position = UDim2.new(0.5, 0, 0.5, 0)
 button.Size = UDim2.new(1, 0, 1, 0)
-button.BackgroundColor3 = OFF_BG
-button.BorderSizePixel = 0
+button.BackgroundTransparency = 1
+button.Text = ""
 button.AutoButtonColor = false
-button.Text = "NOCLIP"
-button.TextColor3 = Color3.fromRGB(255, 255, 255)
-button.TextSize = 12
-button.Font = Enum.Font.GothamBold
-button.ZIndex = 3
+button.Active = true
+button.ZIndex = 5
 button.Parent = container
 
-local buttonCorner = Instance.new("UICorner")
-buttonCorner.CornerRadius = UDim.new(0, 8)
-buttonCorner.Parent = button
+-- ===== SNOWFLAKES =====
+local snowflakes = {}
+local snowRunning = true
 
-local buttonStroke = Instance.new("UIStroke")
-buttonStroke.Color = OFF_STROKE
-buttonStroke.Thickness = 1.5
-buttonStroke.Parent = button
+local function currentSnowColor()
+	return noclipEnabled and ON_SNOW or OFF_SNOW
+end
 
-local gradient = Instance.new("UIGradient")
-gradient.Rotation = 90
-gradient.Transparency = NumberSequence.new({
-	NumberSequenceKeypoint.new(0, 0.55),
-	NumberSequenceKeypoint.new(0.5, 1),
-	NumberSequenceKeypoint.new(1, 1),
-})
-gradient.Parent = button
+local function spawnSnowflake()
+	local flake = Instance.new("TextLabel")
+	flake.Name = "Flake"
+	flake.AnchorPoint = Vector2.new(0.5, 0)
+	flake.Size = UDim2.new(0, 12, 0, 12)
+	flake.Position = UDim2.new(math.random(5, 95) / 100, 0, 0, -12)
+	flake.BackgroundTransparency = 1
+	flake.BorderSizePixel = 0
+	flake.Text = "❄"
+	flake.TextColor3 = currentSnowColor()
+	flake.TextSize = math.random(9, 13)
+	flake.Font = Enum.Font.GothamBold
+	flake.TextTransparency = 0.15 + math.random() * 0.35
+	flake.ZIndex = 3
+	flake.Parent = background
+	table.insert(snowflakes, flake)
+
+	local duration = 1.0 + math.random() * 1.5
+	local tween = TweenService:Create(flake, TweenInfo.new(duration, Enum.EasingStyle.Linear), {
+		Position = UDim2.new(flake.Position.X.Scale, 0, 0, 40)
+	})
+	tween:Play()
+	tween.Completed:Connect(function()
+		for i, f in ipairs(snowflakes) do
+			if f == flake then
+				table.remove(snowflakes, i)
+				break
+			end
+		end
+		flake:Destroy()
+	end)
+end
+
+task.spawn(function()
+	while snowRunning do
+		spawnSnowflake()
+		task.wait(0.28)
+	end
+end)
+
+local function recolorSnow()
+	local color = currentSnowColor()
+	for _, f in ipairs(snowflakes) do
+		TweenService:Create(f, TweenInfo.new(0.3), { TextColor3 = color }):Play()
+	end
+end
 
 -- ===== NOCLIP LOGIC =====
 local function setNoclip(character, state)
@@ -114,42 +173,17 @@ local function setNoclip(character, state)
 	end
 end
 
-local function pulseLoop()
-	while pulsing do
-		ring.Size = UDim2.new(1, 0, 1, 0)
-		ringStroke.Transparency = 0.15
-		TweenService:Create(ring, TweenInfo.new(1.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-			Size = UDim2.new(1.7, 0, 1.7, 0)
-		}):Play()
-		TweenService:Create(ringStroke, TweenInfo.new(1.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-			Transparency = 1
-		}):Play()
-		task.wait(0.85)
-	end
-	ring.Size = UDim2.new(1, 0, 1, 0)
-	ringStroke.Transparency = 1
-end
-
-local function animateColors(on)
-	TweenService:Create(button, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-		{ BackgroundColor3 = on and ON_BG or OFF_BG }):Play()
-	TweenService:Create(buttonStroke, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-		{ Color = on and ON_STROKE or OFF_STROKE }):Play()
-end
-
 local function toggleNoclip()
 	noclipEnabled = not noclipEnabled
-	animateColors(noclipEnabled)
-	if noclipEnabled then
-		button.Text = "ON"
-		if not pulsing then
-			pulsing = true
-			task.spawn(pulseLoop)
-		end
-	else
-		button.Text = "NOCLIP"
-		pulsing = false
-	end
+
+	TweenService:Create(background, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{ BackgroundColor3 = noclipEnabled and ON_BG or OFF_BG }):Play()
+	TweenService:Create(bgStroke, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{ Color = noclipEnabled and ON_STROKE or OFF_STROKE }):Play()
+
+	textLabel.Text = noclipEnabled and "ON" or "NOCLIP"
+	recolorSnow()
+
 	if player.Character then
 		setNoclip(player.Character, noclipEnabled)
 	end
