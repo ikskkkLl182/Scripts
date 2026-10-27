@@ -1,293 +1,109 @@
--- QTE Auto-Tester (executor LocalScript)
--- For testing your own game's QTE mechanic only.
--- All logs prefixed with [QTE-DEBUG]
+-- TWKS | Violence District
+-- Executor: Synapse/Krnl/Fluxus | Place: Violence District (PvP)
+local Players          = game:GetService("Players")
+local RunService       = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Camera           = workspace.CurrentCamera
+local LP               = Players.LocalPlayer
 
-local Players             = game:GetService("Players")
-local RunService          = game:GetService("RunService")
-local VirtualInputManager = game:GetService("VirtualInputManager")
+local CONFIG = {
+    esp        = true,                            -- ESP вкл/выкл
+    aimbot     = true,                            -- аимбот
+    aimKey     = Enum.UserInputType.MouseButton2, -- ПКМ = захват
+    fov        = 140,                             -- радиус аима (px)
+    speed      = 32,                              -- WalkSpeed
+    jump       = 65,                              -- JumpPower
+    killAura   = true,                            -- авто-атака рядом
+    auraRange  = 16,                              -- радиус ауры (studs)
+}
 
-local player = Players.LocalPlayer
-local playerGui = player:WaitForChild("PlayerGui")
-
--- Cleanup old instance
-for _, old in ipairs(playerGui:GetChildren()) do
-    if old.Name == "QTE_TesterGUI" then old:Destroy() end
+-- ESP -----------------------------------------------------------------
+local espObjects = {}
+local function createESP(plr)
+    local box  = Drawing.new("Square");  box.Thickness = 1; box.Filled = false
+    box.Color  = Color3.fromRGB(255, 60, 60); box.Visible = false
+    local name = Drawing.new("Text");    name.Size = 14; name.Center = true
+    name.Outline = true; name.Color = Color3.fromRGB(255, 255, 255); name.Visible = false
+    local hp   = Drawing.new("Text");    hp.Size = 12; hp.Center = true
+    hp.Outline = true; hp.Color = Color3.fromRGB(0, 255, 100); hp.Visible = false
+    espObjects[plr] = { box = box, name = name, hp = hp }
 end
-
--- =====================================================
--- CONFIG
--- =====================================================
-local GUI_KEYWORDS     = {"Skill", "QTE", "Check", "Minigame"}
-local POINTER_NAMES    = {"Pointer", "Arrow", "Indicator", "Needle", "Line"}
-local ZONE_NAMES       = {"Zone", "Target", "GreenZone", "Bar"}
-local FALLBACK_MIN     = 120
-local FALLBACK_MAX     = 160
-local GUI_SCAN_INTERVAL = 0.15
-local KEY_HOLD_TIME    = 0.03
-
--- =====================================================
--- STATE
--- =====================================================
-local enabled        = false
-local currentGui     = nil
-local currentPointer = nil
-local currentZone    = nil
-local lastGuiScan    = 0
-local insideZone     = false
-
--- =====================================================
--- TOGGLE BUTTON
--- =====================================================
-local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "QTE_TesterGUI"
-screenGui.ResetOnSpawn = false
-screenGui.IgnoreGuiInset = true
-screenGui.DisplayOrder = 100
-screenGui.Parent = playerGui
-
-local button = Instance.new("TextButton")
-button.Name = "ToggleButton"
-button.Size = UDim2.new(0, 58, 0, 58)
-button.Position = UDim2.new(1, -78, 0.5, -29)
-button.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
-button.TextColor3 = Color3.fromRGB(255, 255, 255)
-button.Text = "QTE:\nOFF"
-button.TextScaled = true
-button.Font = Enum.Font.GothamBold
-button.BorderSizePixel = 0
-button.AutoButtonColor = true
-button.ZIndex = 3
-button.Parent = screenGui
-
-local btnCorner = Instance.new("UICorner")
-btnCorner.CornerRadius = UDim.new(1, 0)
-btnCorner.Parent = button
-
-local btnStroke = Instance.new("UIStroke")
-btnStroke.Color = Color3.fromRGB(100, 20, 20)
-btnStroke.Thickness = 2
-btnStroke.Parent = button
-
-local textConstraint = Instance.new("UITextSizeConstraint")
-textConstraint.MaxTextSize = 14
-textConstraint.MinTextSize = 9
-textConstraint.Parent = button
-
--- =====================================================
--- HELPERS
--- =====================================================
-local function nameMatches(name, list)
-    local lower = string.lower(name)
-    for _, kw in ipairs(list) do
-        if string.find(lower, string.lower(kw), 1, true) then
-            return true
-        end
-    end
-    return false
-end
-
--- BFS-free single-pass descendants lookup
-local function findInDescendants(root, names)
-    for _, obj in ipairs(root:GetDescendants()) do
-        if obj:IsA("GuiObject") and nameMatches(obj.Name, names) then
-            return obj
-        end
-    end
-    return nil
-end
-
-local function findQteGui()
-    for _, gui in ipairs(playerGui:GetChildren()) do
-        if gui:IsA("ScreenGui") and gui ~= screenGui and gui.Enabled then
-            if nameMatches(gui.Name, GUI_KEYWORDS) then
-                local p = findInDescendants(gui, POINTER_NAMES)
-                if p then
-                    return gui, p
-                end
-            end
-        end
-    end
-    return nil, nil
-end
-
--- AbsoluteRotation if available, else Rotation
-local function getPointerAngle(pointer)
-    local ok, val = pcall(function()
-        return pointer.AbsoluteRotation
-    end)
-    if ok and type(val) == "number" then
-        return val
-    end
-    local ok2, val2 = pcall(function()
-        return pointer.Rotation
-    end)
-    if ok2 and type(val2) == "number" then
-        return val2
-    end
-    return nil
-end
-
-local function normalizeAngle(a)
-    a = a % 360
-    if a < 0 then a = a + 360 end
-    return a
-end
-
--- Read target range from attributes or NumberValue children.
--- Returns (min, max) or (nil, nil) if not found.
-local function readRangeFromZone(zone)
-    local minV, maxV
-
-    -- attributes
-    local attrMin = zone:GetAttribute("TargetMin") or zone:GetAttribute("Min")
-    local attrMax = zone:GetAttribute("TargetMax") or zone:GetAttribute("Max")
-    if type(attrMin) == "number" and type(attrMax) == "number" then
-        return attrMin, attrMax
-    end
-
-    -- NumberValue children
-    for _, child in ipairs(zone:GetDescendants()) do
-        if child:IsA("NumberValue") then
-            local n = string.lower(child.Name)
-            if not minV and string.find(n, "min", 1, true) then
-                minV = child.Value
-            elseif not maxV and string.find(n, "max", 1, true) then
-                maxV = child.Value
-            end
-        end
-    end
-
-    if type(minV) == "number" and type(maxV) == "number" then
-        return minV, maxV
-    end
-
-    return nil, nil
-end
-
-local function getZoneRange(zone)
-    local minV, maxV = readRangeFromZone(zone)
-    if minV and maxV then
-        return minV, maxV
-    end
-    return FALLBACK_MIN, FALLBACK_MAX
-end
-
-local function pressSpace()
-    pcall(function()
-        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
-    end)
-    task.delay(KEY_HOLD_TIME, function()
-        pcall(function()
-            VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
-        end)
-    end)
-end
-
--- =====================================================
--- TOGGLE HANDLER
--- =====================================================
-button.MouseButton1Click:Connect(function()
-    enabled = not enabled
-
-    if enabled then
-        button.BackgroundColor3 = Color3.fromRGB(50, 180, 90)
-        btnStroke.Color         = Color3.fromRGB(20, 100, 50)
-        button.Text             = "QTE:\nON"
-        insideZone = false
-        print("[QTE-DEBUG] Tester ENABLED")
-    else
-        button.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
-        btnStroke.Color         = Color3.fromRGB(100, 20, 20)
-        button.Text             = "QTE:\nOFF"
-        insideZone = false
-        print("[QTE-DEBUG] Tester DISABLED")
-    end
+for _, p in ipairs(Players:GetPlayers()) do if p ~= LP then createESP(p) end end
+Players.PlayerAdded:Connect(function(p) if p ~= LP then createESP(p) end end)
+Players.PlayerRemoving:Connect(function(p)
+    local o = espObjects[p]
+    if o then for _, v in pairs(o) do v:Remove() end; espObjects[p] = nil end
 end)
 
--- =====================================================
--- MAIN LOOP
--- =====================================================
 RunService.RenderStepped:Connect(function()
-    if not enabled then return end
-
-    -- 1. Periodic GUI scan (throttled, not every frame)
-    local now = os.clock()
-    if now - lastGuiScan >= GUI_SCAN_INTERVAL then
-        lastGuiScan = now
-
-        local gui, pointer = findQteGui()
-
-        if gui then
-            -- first time / changed GUI
-            if gui ~= currentGui then
-                currentGui     = gui
-                currentPointer = pointer
-                currentZone    = findInDescendants(gui, ZONE_NAMES)
-                print(string.format(
-                    "[QTE-DEBUG] GUI detected: %s | Pointer: %s | Zone: %s",
-                    gui.Name,
-                    pointer and pointer.Name or "nil",
-                    currentZone and currentZone.Name or "nil"
-                ))
+    for plr, o in pairs(espObjects) do
+        local char = plr.Character
+        local hum  = char and char:FindFirstChildOfClass("Humanoid")
+        local root = char and char:FindFirstChild("HumanoidRootPart")
+        if CONFIG.esp and hum and root and hum.Health > 0 then
+            local pos, onScreen = Camera:WorldToViewportPoint(root.Position)
+            if onScreen then
+                local h = 1600 / pos.Z
+                o.box.Size     = Vector2.new(h * 0.55, h)
+                o.box.Position = Vector2.new(pos.X - o.box.Size.X / 2, pos.Y - o.box.Size.Y / 2)
+                o.box.Visible  = true
+                o.name.Text    = plr.Name
+                o.name.Position = Vector2.new(pos.X, pos.Y - o.box.Size.Y / 2 - 18)
+                o.name.Visible = true
+                o.hp.Text      = "HP " .. math.floor(hum.Health) .. "/" .. math.floor(hum.MaxHealth)
+                o.hp.Position  = Vector2.new(pos.X, pos.Y + o.box.Size.Y / 2 + 4)
+                o.hp.Visible   = true
             else
-                -- re-acquire if destroyed
-                if not currentPointer or not currentPointer.Parent then
-                    currentPointer = pointer
-                    if currentPointer then
-                        print("[QTE-DEBUG] Pointer re-acquired:", currentPointer.Name)
-                    end
-                end
-                if not currentZone or not currentZone.Parent then
-                    currentZone = findInDescendants(gui, ZONE_NAMES)
-                    if currentZone then
-                        print("[QTE-DEBUG] Zone re-acquired:", currentZone.Name)
-                    end
-                end
+                o.box.Visible, o.name.Visible, o.hp.Visible = false, false, false
             end
         else
-            if currentGui then
-                print("[QTE-DEBUG] QTE GUI lost")
-                currentGui     = nil
-                currentPointer = nil
-                currentZone    = nil
-                insideZone     = false
-            end
+            o.box.Visible, o.name.Visible, o.hp.Visible = false, false, false
         end
-    end
-
-    -- 2. Ready check
-    if not currentPointer or not currentPointer.Parent then return end
-    if not currentZone    or not currentZone.Parent    then return end
-
-    -- 3. Angle
-    local rawAngle = getPointerAngle(currentPointer)
-    if not rawAngle then return end
-    local angle = normalizeAngle(rawAngle)
-
-    -- 4. Range
-    local minA, maxA = getZoneRange(currentZone)
-
-    -- Handle wrap-around range (e.g. min=350, max=10)
-    local inRange
-    if minA <= maxA then
-        inRange = (angle >= minA and angle <= maxA)
-    else
-        inRange = (angle >= minA or  angle <= maxA)
-    end
-
-    -- 5. Debounced press
-    if inRange then
-        if not insideZone then
-            insideZone = true
-            pressSpace()
-            print(string.format(
-                "[QTE-DEBUG] HIT! angle=%.1f range=[%.1f, %.1f]",
-                angle, minA, maxA
-            ))
-        end
-    else
-        insideZone = false
     end
 end)
 
-print("[QTE-DEBUG] QTE Tester loaded")
+-- Aimbot --------------------------------------------------------------
+RunService.RenderStepped:Connect(function()
+    if not CONFIG.aimbot then return end
+    if not UserInputService:IsMouseButtonPressed(CONFIG.aimKey) then return end
+    local mouse = UserInputService:GetMouseLocation()
+    local best, bestDist = nil, CONFIG.fov
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr == LP then continue end
+        local head = plr.Character and plr.Character:FindFirstChild("Head")
+        if not head then continue end
+        local sp, onScreen = Camera:WorldToViewportPoint(head.Position)
+        if onScreen then
+            local d = (Vector2.new(sp.X, sp.Y) - mouse).Magnitude
+            if d < bestDist then bestDist = d; best = head end
+        end
+    end
+    if best then
+        Camera.CFrame = CFrame.new(Camera.CFrame.Position, best.Position)
+    end
+end)
+
+-- Kill aura -----------------------------------------------------------
+RunService.Heartbeat:Connect(function()
+    if not CONFIG.killAura then return end
+    local char = LP.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    local tool = char and char:FindFirstChildOfClass("Tool")
+    if not root or not tool then return end
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr == LP then continue end
+        local troot = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
+        if troot and (root.Position - troot.Position).Magnitude <= CONFIG.auraRange then
+            pcall(function() tool:Activate() end)
+        end
+    end
+end)
+
+-- Speed / Jump --------------------------------------------------------
+RunService.Heartbeat:Connect(function()
+    local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
+    if hum then
+        hum.WalkSpeed = CONFIG.speed
+        hum.JumpPower = CONFIG.jump
+    end
+end)
