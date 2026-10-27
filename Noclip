@@ -1,109 +1,225 @@
--- TWKS | Violence District
--- Executor: Synapse/Krnl/Fluxus | Place: Violence District (PvP)
-local Players          = game:GetService("Players")
-local RunService       = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-local Camera           = workspace.CurrentCamera
-local LP               = Players.LocalPlayer
+-- TWKS | Violence District | MOBILE MENU + AUTO SKILLCHECK
+-- Executor: Delta / Hydrogen / Fluxus / Codex (mobile OK)
+local Players  = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local VIM      = game:GetService("VirtualInputManager")
+local Camera   = workspace.CurrentCamera
+local LP       = Players.LocalPlayer
+local Drawing  = Drawing or getgenv().Drawing
 
-local CONFIG = {
-    esp        = true,                            -- ESP вкл/выкл
-    aimbot     = true,                            -- аимбот
-    aimKey     = Enum.UserInputType.MouseButton2, -- ПКМ = захват
-    fov        = 140,                             -- радиус аима (px)
-    speed      = 32,                              -- WalkSpeed
-    jump       = 65,                              -- JumpPower
-    killAura   = true,                            -- авто-атака рядом
-    auraRange  = 16,                              -- радиус ауры (studs)
+local CFG = {
+    esp=false, aimbot=false, aimFOV=220, killAura=false, auraRange=18,
+    speedOn=false, speed=32, jumpOn=false, jump=65, skillCheck=false,
 }
 
--- ESP -----------------------------------------------------------------
-local espObjects = {}
-local function createESP(plr)
-    local box  = Drawing.new("Square");  box.Thickness = 1; box.Filled = false
-    box.Color  = Color3.fromRGB(255, 60, 60); box.Visible = false
-    local name = Drawing.new("Text");    name.Size = 14; name.Center = true
-    name.Outline = true; name.Color = Color3.fromRGB(255, 255, 255); name.Visible = false
-    local hp   = Drawing.new("Text");    hp.Size = 12; hp.Center = true
-    hp.Outline = true; hp.Color = Color3.fromRGB(0, 255, 100); hp.Visible = false
-    espObjects[plr] = { box = box, name = name, hp = hp }
+-- ================= MENU =================
+local gui = Instance.new("ScreenGui")
+gui.Name="TWKS_Menu"; gui.ResetOnSpawn=false; gui.IgnoreGuiInset=true
+pcall(function() gui.Parent=game:GetService("CoreGui") end)
+if not gui.Parent then gui.Parent=LP:WaitForChild("PlayerGui") end
+
+local main = Instance.new("Frame")
+main.Size=UDim2.new(0,260,0,400); main.Position=UDim2.new(0,20,0,80)
+main.BackgroundColor3=Color3.fromRGB(20,20,25); main.BorderSizePixel=0
+main.Active=true; main.Draggable=true; main.Parent=gui
+Instance.new("UICorner",main).CornerRadius=UDim.new(0,10)
+
+local title = Instance.new("TextLabel")
+title.Size=UDim2.new(1,0,0,32); title.BackgroundColor3=Color3.fromRGB(40,40,50)
+title.Text="TWKS | Violence District"; title.TextColor3=Color3.new(1,1,1)
+title.Font=Enum.Font.GothamBold; title.TextSize=14; title.BorderSizePixel=0
+title.Parent=main; Instance.new("UICorner",title).CornerRadius=UDim.new(0,10)
+
+local minBtn = Instance.new("TextButton")
+minBtn.Size=UDim2.new(0,28,0,28); minBtn.Position=UDim2.new(1,-32,0,2)
+minBtn.BackgroundColor3=Color3.fromRGB(200,60,60); minBtn.Text="–"
+minBtn.TextColor3=Color3.new(1,1,1); minBtn.Font=Enum.Font.GothamBold
+minBtn.TextSize=18; minBtn.Parent=title
+Instance.new("UICorner",minBtn).CornerRadius=UDim.new(0,6)
+
+local scroll = Instance.new("ScrollingFrame")
+scroll.Size=UDim2.new(1,-16,1,-42); scroll.Position=UDim2.new(0,8,0,38)
+scroll.BackgroundTransparency=1; scroll.BorderSizePixel=0
+scroll.ScrollBarThickness=4; scroll.AutomaticCanvasSize=Enum.AutomaticSize.Y
+scroll.CanvasSize=UDim2.new(0,0,0,0); scroll.Parent=main
+local layout=Instance.new("UIListLayout")
+layout.Padding=UDim.new(0,6); layout.SortOrder=Enum.SortOrder.LayoutOrder
+layout.Parent=scroll
+
+local function toggle(name,key)
+    local b=Instance.new("TextButton")
+    b.Size=UDim2.new(1,-8,0,42); b.BackgroundColor3=Color3.fromRGB(35,35,45)
+    b.TextColor3=Color3.new(1,1,1); b.Font=Enum.Font.Gotham; b.TextSize=14
+    b.Text=name..": OFF"; b.Parent=scroll
+    Instance.new("UICorner",b).CornerRadius=UDim.new(0,8)
+    b.MouseButton1Click:Connect(function()
+        CFG[key]=not CFG[key]
+        b.Text=name..": "..(CFG[key] and "ON" or "OFF")
+        b.BackgroundColor3=CFG[key] and Color3.fromRGB(60,160,80) or Color3.fromRGB(35,35,45)
+    end)
 end
-for _, p in ipairs(Players:GetPlayers()) do if p ~= LP then createESP(p) end end
-Players.PlayerAdded:Connect(function(p) if p ~= LP then createESP(p) end end)
-Players.PlayerRemoving:Connect(function(p)
-    local o = espObjects[p]
-    if o then for _, v in pairs(o) do v:Remove() end; espObjects[p] = nil end
+local function slider(name,key,min,max)
+    local f=Instance.new("Frame")
+    f.Size=UDim2.new(1,-8,0,58); f.BackgroundColor3=Color3.fromRGB(35,35,45)
+    f.Parent=scroll; Instance.new("UICorner",f).CornerRadius=UDim.new(0,8)
+    local l=Instance.new("TextLabel")
+    l.Size=UDim2.new(1,-12,0,24); l.Position=UDim2.new(0,6,0,2)
+    l.BackgroundTransparency=1; l.Text=name..": "..CFG[key]
+    l.TextColor3=Color3.new(1,1,1); l.Font=Enum.Font.Gotham; l.TextSize=13
+    l.TextXAlignment=Enum.TextXAlignment.Left; l.Parent=f
+    local box=Instance.new("TextBox")
+    box.Size=UDim2.new(1,-12,0,26); box.Position=UDim2.new(0,6,0,28)
+    box.BackgroundColor3=Color3.fromRGB(25,25,32); box.TextColor3=Color3.new(1,1,1)
+    box.PlaceholderText=tostring(CFG[key]); box.Text=""
+    box.Font=Enum.Font.Gotham; box.TextSize=13; box.Parent=f
+    Instance.new("UICorner",box).CornerRadius=UDim.new(0,6)
+    box.FocusLost:Connect(function()
+        local n=tonumber(box.Text)
+        if n and n>=min and n<=max then
+            CFG[key]=n; l.Text=name..": "..n
+        end
+        box.Text=""
+    end)
+end
+
+toggle("ESP","esp")
+toggle("Aimbot (always)","aimbot")
+toggle("Kill Aura","killAura")
+toggle("Speed","speedOn")
+slider("Speed","speed",16,200)
+toggle("Jump","jumpOn")
+slider("Jump","jump",50,300)
+toggle("Auto SkillCheck","skillCheck")
+
+local minimized=false
+minBtn.MouseButton1Click:Connect(function()
+    minimized=not minimized
+    scroll.Visible=not minimized
+    main.Size=minimized and UDim2.new(0,260,0,32) or UDim2.new(0,260,0,400)
+    minBtn.Text=minimized and "+" or "–"
 end)
 
+-- ================= ESP =================
+local espList={}
+local function addESP(p)
+    if p==LP or not Drawing then return end
+    local box=Drawing.new("Square"); box.Thickness=1; box.Filled=false
+    box.Color=Color3.fromRGB(255,60,60); box.Visible=false
+    local nm=Drawing.new("Text"); nm.Size=14; nm.Center=true
+    nm.Outline=true; nm.Color=Color3.new(1,1,1); nm.Visible=false
+    espList[p]={box=box,name=nm}
+end
+if Drawing then
+    for _,p in ipairs(Players:GetPlayers()) do addESP(p) end
+    Players.PlayerAdded:Connect(addESP)
+    Players.PlayerRemoving:Connect(function(p)
+        local o=espList[p]; if o then
+            for _,v in pairs(o) do v:Remove() end; espList[p]=nil
+        end
+    end)
+end
+
 RunService.RenderStepped:Connect(function()
-    for plr, o in pairs(espObjects) do
-        local char = plr.Character
-        local hum  = char and char:FindFirstChildOfClass("Humanoid")
-        local root = char and char:FindFirstChild("HumanoidRootPart")
-        if CONFIG.esp and hum and root and hum.Health > 0 then
-            local pos, onScreen = Camera:WorldToViewportPoint(root.Position)
-            if onScreen then
-                local h = 1600 / pos.Z
-                o.box.Size     = Vector2.new(h * 0.55, h)
-                o.box.Position = Vector2.new(pos.X - o.box.Size.X / 2, pos.Y - o.box.Size.Y / 2)
-                o.box.Visible  = true
-                o.name.Text    = plr.Name
-                o.name.Position = Vector2.new(pos.X, pos.Y - o.box.Size.Y / 2 - 18)
-                o.name.Visible = true
-                o.hp.Text      = "HP " .. math.floor(hum.Health) .. "/" .. math.floor(hum.MaxHealth)
-                o.hp.Position  = Vector2.new(pos.X, pos.Y + o.box.Size.Y / 2 + 4)
-                o.hp.Visible   = true
+    if not Drawing then return end
+    for p,o in pairs(espList) do
+        local ch=p.Character
+        local hum=ch and ch:FindFirstChildOfClass("Humanoid")
+        local root=ch and ch:FindFirstChild("HumanoidRootPart")
+        if CFG.esp and hum and root and hum.Health>0 then
+            local sp,onS=Camera:WorldToViewportPoint(root.Position)
+            if onS then
+                local h=1600/sp.Z
+                o.box.Size=Vector2.new(h*0.55,h)
+                o.box.Position=Vector2.new(sp.X-o.box.Size.X/2, sp.Y-o.box.Size.Y/2)
+                o.box.Visible=true
+                o.name.Text=p.Name
+                o.name.Position=Vector2.new(sp.X, sp.Y-o.box.Size.Y/2-18)
+                o.name.Visible=true
             else
-                o.box.Visible, o.name.Visible, o.hp.Visible = false, false, false
+                o.box.Visible=false; o.name.Visible=false
             end
         else
-            o.box.Visible, o.name.Visible, o.hp.Visible = false, false, false
+            o.box.Visible=false; o.name.Visible=false
         end
     end
 end)
 
--- Aimbot --------------------------------------------------------------
+-- ================= AIMBOT =================
 RunService.RenderStepped:Connect(function()
-    if not CONFIG.aimbot then return end
-    if not UserInputService:IsMouseButtonPressed(CONFIG.aimKey) then return end
-    local mouse = UserInputService:GetMouseLocation()
-    local best, bestDist = nil, CONFIG.fov
-    for _, plr in ipairs(Players:GetPlayers()) do
-        if plr == LP then continue end
-        local head = plr.Character and plr.Character:FindFirstChild("Head")
+    if not CFG.aimbot then return end
+    local center=Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+    local best,bestD=nil,CFG.aimFOV
+    for _,p in ipairs(Players:GetPlayers()) do
+        if p==LP then continue end
+        local head=p.Character and p.Character:FindFirstChild("Head")
         if not head then continue end
-        local sp, onScreen = Camera:WorldToViewportPoint(head.Position)
-        if onScreen then
-            local d = (Vector2.new(sp.X, sp.Y) - mouse).Magnitude
-            if d < bestDist then bestDist = d; best = head end
+        local sp,onS=Camera:WorldToViewportPoint(head.Position)
+        if onS then
+            local d=(Vector2.new(sp.X,sp.Y)-center).Magnitude
+            if d<bestD then bestD=d; best=head end
         end
     end
     if best then
-        Camera.CFrame = CFrame.new(Camera.CFrame.Position, best.Position)
+        Camera.CFrame=CFrame.new(Camera.CFrame.Position,best.Position)
     end
 end)
 
--- Kill aura -----------------------------------------------------------
+-- ================= KILL AURA =================
 RunService.Heartbeat:Connect(function()
-    if not CONFIG.killAura then return end
-    local char = LP.Character
-    local root = char and char:FindFirstChild("HumanoidRootPart")
-    local tool = char and char:FindFirstChildOfClass("Tool")
+    if not CFG.killAura then return end
+    local ch=LP.Character
+    local root=ch and ch:FindFirstChild("HumanoidRootPart")
+    local tool=ch and ch:FindFirstChildOfClass("Tool")
     if not root or not tool then return end
-    for _, plr in ipairs(Players:GetPlayers()) do
-        if plr == LP then continue end
-        local troot = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
-        if troot and (root.Position - troot.Position).Magnitude <= CONFIG.auraRange then
+    for _,p in ipairs(Players:GetPlayers()) do
+        if p==LP then continue end
+        local tr=p.Character and p.Character:FindFirstChild("HumanoidRootPart")
+        if tr and (root.Position-tr.Position).Magnitude<=CFG.auraRange then
             pcall(function() tool:Activate() end)
         end
     end
 end)
 
--- Speed / Jump --------------------------------------------------------
+-- ================= SPEED / JUMP =================
 RunService.Heartbeat:Connect(function()
-    local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
-    if hum then
-        hum.WalkSpeed = CONFIG.speed
-        hum.JumpPower = CONFIG.jump
+    local hum=LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
+    if not hum then return end
+    if CFG.speedOn then hum.WalkSpeed=CFG.speed end
+    if CFG.jumpOn  then hum.JumpPower=CFG.jump  end
+end)
+
+-- ================= AUTO SKILLCHECK =================
+-- Ищет активный ScreenGui с названием skill/check/qte/minigame.
+-- Тапает по движущемуся индикатору (Frame/TextLabel/ImageLabel ~ 4-40 px высотой).
+local function isSkillGui(o)
+    local n=o.Name:lower()
+    return n:find("skill") or n:find("check") or n:find("qte") or n:find("minigame")
+end
+
+task.spawn(function()
+    while true do
+        task.wait(0.05)
+        if not CFG.skillCheck then continue end
+        local pg=LP:FindFirstChild("PlayerGui"); if not pg then continue end
+        for _,sg in ipairs(pg:GetChildren()) do
+            if sg:IsA("ScreenGui") and sg.Enabled and isSkillGui(sg) then
+                for _,d in ipairs(sg:GetDescendants()) do
+                    if (d:IsA("Frame") or d:IsA("TextLabel") or d:IsA("ImageLabel")) then
+                        local sz=d.AbsoluteSize
+                        if sz.Y>4 and sz.Y<40 and sz.X>4 and sz.X<80 then
+                            local px=d.AbsolutePosition.X+sz.X/2
+                            local py=d.AbsolutePosition.Y+sz.Y/2
+                            pcall(function()
+                                VIM:SendMouseButtonEvent(px,py,0,true,game,1)
+                                task.wait(0.03)
+                                VIM:SendMouseButtonEvent(px,py,0,false,game,1)
+                            end)
+                        end
+                    end
+                end
+            end
+        end
     end
 end)
+
+print("[TWKS] Mobile menu loaded.")
