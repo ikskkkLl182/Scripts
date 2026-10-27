@@ -1,7 +1,5 @@
 -- ============================================================
--- TWKS | Violence District | MOBILE MENU v2 (beautiful)
--- Читы: ESP Players (Killer/Survivor), Generators, Gates,
---       Pallets, Windows, Hooks + Auto SkillCheck + Next Killer
+-- TWKS | Violence District | MOBILE MENU v3 (compact)
 -- Executor: Delta / Fluxus / Hydrogen / Codex (mobile)
 -- ============================================================
 
@@ -17,862 +15,597 @@ local LP        = Players.LocalPlayer
 local PlayerGui = LP:WaitForChild("PlayerGui")
 local Camera    = workspace.CurrentCamera
 
--- ================= CONFIG =================
 local Cfg = {
-    espKillers     = true,
-    espSurvivors   = true,
-    espGenerators  = true,
-    espGates       = true,
-    espPallets     = true,
-    espWindows     = true,
-    espHooks       = true,
-    autoSkillCheck = true,
-    nextKiller     = true,
-    killerWarn     = true,
-    fullBright     = true,
+    espKillers=true, espSurvivors=true,
+    espGenerators=true, espGates=true, espPallets=true, espWindows=true, espHooks=true,
+    autoSkillCheck=true, nextKiller=true, killerWarn=true, fullBright=true,
 }
 
 local Colors = {
-    bg       = Color3.fromRGB(14, 14, 20),
-    surface  = Color3.fromRGB(24, 24, 34),
-    surfaceL = Color3.fromRGB(38, 38, 52),
-    accent   = Color3.fromRGB(124, 92, 255),
-    accentL  = Color3.fromRGB(170, 140, 255),
-    text     = Color3.fromRGB(240, 240, 250),
-    textDim  = Color3.fromRGB(140, 140, 165),
-    green    = Color3.fromRGB(80, 220, 140),
-    red      = Color3.fromRGB(255, 93, 108),
+    bg=Color3.fromRGB(14,14,20), surface=Color3.fromRGB(24,24,34),
+    surfaceL=Color3.fromRGB(38,38,52), accent=Color3.fromRGB(124,92,255),
+    accentL=Color3.fromRGB(170,140,255), text=Color3.fromRGB(240,240,250),
+    textDim=Color3.fromRGB(140,140,165), green=Color3.fromRGB(80,220,140),
+    red=Color3.fromRGB(255,93,108),
 }
-
-local PlayerColors = {
-    Killer   = Color3.fromRGB(255, 93, 108),
-    Survivor = Color3.fromRGB(64, 224, 255),
-}
+local PlayerColors = { Killer=Color3.fromRGB(255,93,108), Survivor=Color3.fromRGB(64,224,255) }
 local ObjectColors = {
-    Generator = Color3.fromRGB(150, 0, 200),
-    Gate      = Color3.fromRGB(255, 255, 255),
-    Pallet    = Color3.fromRGB(74, 255, 181),
-    Window    = Color3.fromRGB(74, 255, 181),
-    Hook      = Color3.fromRGB(132, 255, 169),
+    Generator=Color3.fromRGB(150,0,200), Gate=Color3.fromRGB(255,255,255),
+    Pallet=Color3.fromRGB(74,255,181), Window=Color3.fromRGB(74,255,181),
+    Hook=Color3.fromRGB(132,255,169),
 }
-local MaskNames = {
-    ["Richard"]="Rooster",["Tony"]="Tiger",["Brandon"]="Panther",
-    ["Cobra"]="Cobra",["Richter"]="Rat",["Rabbit"]="Rabbit",["Alex"]="Chainsaw"
-}
-local MaskColors = {
-    ["Richard"]=Color3.fromRGB(255,0,0),["Tony"]=Color3.fromRGB(255,255,0),
+local MaskNames = {["Richard"]="Rooster",["Tony"]="Tiger",["Brandon"]="Panther",
+    ["Cobra"]="Cobra",["Richter"]="Rat",["Rabbit"]="Rabbit",["Alex"]="Chainsaw"}
+local MaskColors = {["Richard"]=Color3.fromRGB(255,0,0),["Tony"]=Color3.fromRGB(255,255,0),
     ["Brandon"]=Color3.fromRGB(160,32,240),["Cobra"]=Color3.fromRGB(0,255,0),
     ["Richter"]=Color3.fromRGB(0,0,0),["Rabbit"]=Color3.fromRGB(255,105,180),
-    ["Alex"]=Color3.fromRGB(255,255,255)
-}
+    ["Alex"]=Color3.fromRGB(255,255,255)}
 
 -- ================= GUI =================
-if PlayerGui:FindFirstChild("TWKS_Menu") then PlayerGui.TWKS_Menu:Destroy() end
-if PlayerGui:FindFirstChild("ChasedInds") then PlayerGui.ChasedInds:Destroy() end
+for _, n in ipairs({"TWKS_Menu","ChasedInds"}) do
+    local o = PlayerGui:FindFirstChild(n); if o then o:Destroy() end
+end
 
 local MenuGui = Instance.new("ScreenGui")
-MenuGui.Name = "TWKS_Menu"
-MenuGui.ResetOnSpawn = false
-MenuGui.IgnoreGuiInset = true
-MenuGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-MenuGui.DisplayOrder = 100
-pcall(function() MenuGui.Parent = game:GetService("CoreGui") end)
-if not MenuGui.Parent then MenuGui.Parent = PlayerGui end
+MenuGui.Name="TWKS_Menu"; MenuGui.ResetOnSpawn=false; MenuGui.IgnoreGuiInset=true
+MenuGui.ZIndexBehavior=Enum.ZIndexBehavior.Sibling; MenuGui.DisplayOrder=100
+pcall(function() MenuGui.Parent=game:GetService("CoreGui") end)
+if not MenuGui.Parent then MenuGui.Parent=PlayerGui end
 
 local IndicatorGui = Instance.new("ScreenGui")
-IndicatorGui.Name = "ChasedInds"
-IndicatorGui.IgnoreGuiInset = true
-IndicatorGui.ResetOnSpawn = false
-IndicatorGui.DisplayOrder = 999
-pcall(function() IndicatorGui.Parent = game:GetService("CoreGui") end)
-if not IndicatorGui.Parent then IndicatorGui.Parent = PlayerGui end
+IndicatorGui.Name="ChasedInds"; IndicatorGui.IgnoreGuiInset=true
+IndicatorGui.ResetOnSpawn=false; IndicatorGui.DisplayOrder=999
+pcall(function() IndicatorGui.Parent=game:GetService("CoreGui") end)
+if not IndicatorGui.Parent then IndicatorGui.Parent=PlayerGui end
 
--- == MAIN WINDOW ==
+local W, H = 220, 360
 local Main = Instance.new("Frame")
-Main.Size = UDim2.fromOffset(310, 500)
-Main.Position = UDim2.new(0.5, -155, 0.5, -250)
-Main.BackgroundColor3 = Colors.bg
-Main.BorderSizePixel = 0
-Main.ClipsDescendants = false
-Main.Parent = MenuGui
-Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 14)
+Main.Size=UDim2.fromOffset(W,H)
+Main.Position=UDim2.new(0.5,-W/2,0.5,-H/2)
+Main.BackgroundColor3=Colors.bg; Main.BorderSizePixel=0; Main.Parent=MenuGui
+Instance.new("UICorner",Main).CornerRadius=UDim.new(0,12)
 
--- shadow
 local Shadow = Instance.new("Frame")
-Shadow.Size = UDim2.new(1, 10, 1, 10)
-Shadow.Position = UDim2.new(0, -5, 0, -5)
-Shadow.BackgroundColor3 = Color3.new(0, 0, 0)
-Shadow.BackgroundTransparency = 0.55
-Shadow.BorderSizePixel = 0
-Shadow.ZIndex = 0
-Shadow.Parent = Main
-Instance.new("UICorner", Shadow).CornerRadius = UDim.new(0, 16)
+Shadow.Size=UDim2.new(1,8,1,8); Shadow.Position=UDim2.new(0,-4,0,-4)
+Shadow.BackgroundColor3=Color3.new(0,0,0); Shadow.BackgroundTransparency=0.55
+Shadow.BorderSizePixel=0; Shadow.ZIndex=0; Shadow.Parent=Main
+Instance.new("UICorner",Shadow).CornerRadius=UDim.new(0,14)
 
 local glow = Instance.new("UIStroke")
-glow.Color = Colors.accent
-glow.Thickness = 1
-glow.Transparency = 0.6
-glow.Parent = Main
+glow.Color=Colors.accent; glow.Thickness=1; glow.Transparency=0.6; glow.Parent=Main
 
--- == HEADER ==
+-- HEADER
 local Header = Instance.new("Frame")
-Header.Size = UDim2.new(1, 0, 0, 48)
-Header.BackgroundColor3 = Colors.surface
-Header.BorderSizePixel = 0
-Header.Parent = Main
-Instance.new("UICorner", Header).CornerRadius = UDim.new(0, 14)
+Header.Size=UDim2.new(1,0,0,38); Header.BackgroundColor3=Colors.surface
+Header.BorderSizePixel=0; Header.Parent=Main
+Instance.new("UICorner",Header).CornerRadius=UDim.new(0,12)
 
-local headerGrad = Instance.new("UIGradient")
-headerGrad.Color = ColorSequence.new(Colors.surface, Color3.fromRGB(50, 40, 80))
-headerGrad.Rotation = 90
-headerGrad.Parent = Header
+local hg = Instance.new("UIGradient")
+hg.Color=ColorSequence.new(Colors.surface,Color3.fromRGB(50,40,80)); hg.Rotation=90; hg.Parent=Header
 
 local HeaderMask = Instance.new("Frame")
-HeaderMask.Size = UDim2.new(1, 0, 0, 14)
-HeaderMask.Position = UDim2.new(0, 0, 1, -14)
-HeaderMask.BackgroundColor3 = Colors.surface
-HeaderMask.BorderSizePixel = 0
-HeaderMask.Parent = Header
+HeaderMask.Size=UDim2.new(1,0,0,10); HeaderMask.Position=UDim2.new(0,0,1,-10)
+HeaderMask.BackgroundColor3=Colors.surface; HeaderMask.BorderSizePixel=0; HeaderMask.Parent=Header
 
 local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, -100, 1, 0)
-Title.Position = UDim2.fromOffset(16, 0)
-Title.BackgroundTransparency = 1
-Title.Text = "✦  TWKS  ·  Violence District"
-Title.TextColor3 = Colors.text
-Title.Font = Enum.Font.GothamBold
-Title.TextSize = 15
-Title.TextXAlignment = Enum.TextXAlignment.Left
-Title.Parent = Header
+Title.Size=UDim2.new(1,-80,1,0); Title.Position=UDim2.fromOffset(12,0)
+Title.BackgroundTransparency=1; Title.Text="✦ TWKS · VD"
+Title.TextColor3=Colors.text; Title.Font=Enum.Font.GothamBold; Title.TextSize=13
+Title.TextXAlignment=Enum.TextXAlignment.Left; Title.Parent=Header
 
 local MinBtn = Instance.new("TextButton")
-MinBtn.Size = UDim2.fromOffset(28, 28)
-MinBtn.Position = UDim2.new(1, -70, 0.5, -14)
-MinBtn.BackgroundColor3 = Colors.surfaceL
-MinBtn.Text = "–"
-MinBtn.TextColor3 = Colors.text
-MinBtn.Font = Enum.Font.GothamBold
-MinBtn.TextSize = 18
-MinBtn.Parent = Header
-Instance.new("UICorner", MinBtn).CornerRadius = UDim.new(0, 8)
+MinBtn.Size=UDim2.fromOffset(24,24); MinBtn.Position=UDim2.new(1,-56,0.5,-12)
+MinBtn.BackgroundColor3=Colors.surfaceL; MinBtn.Text="–"; MinBtn.TextColor3=Colors.text
+MinBtn.Font=Enum.Font.GothamBold; MinBtn.TextSize=16; MinBtn.Parent=Header
+Instance.new("UICorner",MinBtn).CornerRadius=UDim.new(0,6)
 
 local CloseBtn = Instance.new("TextButton")
-CloseBtn.Size = UDim2.fromOffset(28, 28)
-CloseBtn.Position = UDim2.new(1, -36, 0.5, -14)
-CloseBtn.BackgroundColor3 = Colors.red
-CloseBtn.Text = "×"
-CloseBtn.TextColor3 = Colors.text
-CloseBtn.Font = Enum.Font.GothamBold
-CloseBtn.TextSize = 20
-CloseBtn.Parent = Header
-Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(0, 8)
+CloseBtn.Size=UDim2.fromOffset(24,24); CloseBtn.Position=UDim2.new(1,-28,0.5,-12)
+CloseBtn.BackgroundColor3=Colors.red; CloseBtn.Text="×"; CloseBtn.TextColor3=Colors.text
+CloseBtn.Font=Enum.Font.GothamBold; CloseBtn.TextSize=18; CloseBtn.Parent=Header
+Instance.new("UICorner",CloseBtn).CornerRadius=UDim.new(0,6)
 
--- == TABS ==
+-- TABS
 local TabBar = Instance.new("Frame")
-TabBar.Size = UDim2.new(1, -20, 0, 38)
-TabBar.Position = UDim2.fromOffset(10, 56)
-TabBar.BackgroundColor3 = Colors.surface
-TabBar.BorderSizePixel = 0
-TabBar.Parent = Main
-Instance.new("UICorner", TabBar).CornerRadius = UDim.new(0, 10)
+TabBar.Size=UDim2.new(1,-14,0,30); TabBar.Position=UDim2.fromOffset(7,44)
+TabBar.BackgroundColor3=Colors.surface; TabBar.BorderSizePixel=0; TabBar.Parent=Main
+Instance.new("UICorner",TabBar).CornerRadius=UDim.new(0,8)
+local tl = Instance.new("UIListLayout")
+tl.FillDirection=Enum.FillDirection.Horizontal
+tl.HorizontalAlignment=Enum.HorizontalAlignment.Center
+tl.VerticalAlignment=Enum.VerticalAlignment.Center
+tl.Padding=UDim.new(0,3); tl.Parent=TabBar
 
-local tabLayout = Instance.new("UIListLayout")
-tabLayout.FillDirection = Enum.FillDirection.Horizontal
-tabLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-tabLayout.VerticalAlignment = Enum.VerticalAlignment.Center
-tabLayout.Padding = UDim.new(0, 4)
-tabLayout.Parent = TabBar
-
--- == CONTENT ==
 local Content = Instance.new("ScrollingFrame")
-Content.Size = UDim2.new(1, -16, 1, -102)
-Content.Position = UDim2.fromOffset(8, 100)
-Content.BackgroundTransparency = 1
-Content.BorderSizePixel = 0
-Content.ScrollBarThickness = 3
-Content.ScrollBarImageColor3 = Colors.accent
-Content.AutomaticCanvasSize = Enum.AutomaticSize.Y
-Content.CanvasSize = UDim2.new(0, 0, 0, 0)
-Content.Parent = Main
+Content.Size=UDim2.new(1,-12,1,-84); Content.Position=UDim2.fromOffset(6,80)
+Content.BackgroundTransparency=1; Content.BorderSizePixel=0
+Content.ScrollBarThickness=2; Content.ScrollBarImageColor3=Colors.accent
+Content.AutomaticCanvasSize=Enum.AutomaticSize.Y
+Content.CanvasSize=UDim2.new(0,0,0,0); Content.Parent=Main
+local ll = Instance.new("UIListLayout")
+ll.Padding=UDim.new(0,5); ll.SortOrder=Enum.SortOrder.LayoutOrder; ll.Parent=Content
+local pl = Instance.new("UIPadding")
+pl.PaddingTop=UDim.new(0,3); pl.PaddingBottom=UDim.new(0,6); pl.Parent=Content
 
-local listLayout = Instance.new("UIListLayout")
-listLayout.Padding = UDim.new(0, 8)
-listLayout.SortOrder = Enum.SortOrder.LayoutOrder
-listLayout.Parent = Content
-local padList = Instance.new("UIPadding")
-padList.PaddingTop = UDim.new(0, 4)
-padList.PaddingBottom = UDim.new(0, 8)
-padList.Parent = Content
-
-local tabPages = {}
-local tabButtons = {}
-
+local tabPages, tabButtons = {}, {}
 local function setTab(idx)
-    for i, page in ipairs(tabPages) do
-        page.Visible = (i == idx)
-    end
-    for i, btn in ipairs(tabButtons) do
-        local tw = TweenInfo.new(0.18, Enum.EasingStyle.Quad)
-        TweenService:Create(btn, tw, {
-            BackgroundColor3 = (i == idx) and Colors.accent or Colors.surfaceL,
-        }):Play()
-        btn.TextColor3 = (i == idx) and Color3.new(1, 1, 1) or Colors.textDim
+    for i, pg in ipairs(tabPages) do pg.Visible = (i==idx) end
+    for i, b in ipairs(tabButtons) do
+        local tw=TweenInfo.new(0.16,Enum.EasingStyle.Quad)
+        TweenService:Create(b,tw,{BackgroundColor3=(i==idx) and Colors.accent or Colors.surfaceL}):Play()
+        b.TextColor3=(i==idx) and Color3.new(1,1,1) or Colors.textDim
     end
 end
 
--- == HELPERS ==
 local function sectionHeader(parent, text)
-    local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(1, -8, 0, 22)
-    lbl.BackgroundTransparency = 1
-    lbl.Text = "  " .. text
-    lbl.TextColor3 = Colors.accentL
-    lbl.Font = Enum.Font.GothamBold
-    lbl.TextSize = 12
-    lbl.TextXAlignment = Enum.TextXAlignment.Left
-    lbl.Parent = parent
-    return lbl
+    local l = Instance.new("TextLabel")
+    l.Size=UDim2.new(1,-6,0,16); l.BackgroundTransparency=1
+    l.Text="  "..text; l.TextColor3=Colors.accentL
+    l.Font=Enum.Font.GothamBold; l.TextSize=10
+    l.TextXAlignment=Enum.TextXAlignment.Left; l.Parent=parent
+    return l
 end
 
 local function createToggle(parent, label, key, accent)
     accent = accent or Colors.accent
     local row = Instance.new("Frame")
-    row.Size = UDim2.new(1, -8, 0, 48)
-    row.BackgroundColor3 = Colors.surface
-    row.BorderSizePixel = 0
-    row.Parent = parent
-    Instance.new("UICorner", row).CornerRadius = UDim.new(0, 10)
-
-    local stroke = Instance.new("UIStroke")
-    stroke.Color = accent
-    stroke.Thickness = 1
-    stroke.Transparency = 0.85
-    stroke.Parent = row
-
-    local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(1, -80, 1, 0)
-    lbl.Position = UDim2.fromOffset(14, 0)
-    lbl.BackgroundTransparency = 1
-    lbl.Text = label
-    lbl.TextColor3 = Colors.text
-    lbl.Font = Enum.Font.GothamMedium
-    lbl.TextSize = 13
-    lbl.TextXAlignment = Enum.TextXAlignment.Left
-    lbl.Parent = row
-
-    local switch = Instance.new("Frame")
-    switch.Size = UDim2.fromOffset(46, 26)
-    switch.Position = UDim2.new(1, -60, 0.5, -13)
-    switch.BackgroundColor3 = Cfg[key] and accent or Colors.surfaceL
-    switch.BorderSizePixel = 0
-    switch.Parent = row
-    Instance.new("UICorner", switch).CornerRadius = UDim.new(1, 0)
-
-    local knob = Instance.new("Frame")
-    knob.Size = UDim2.fromOffset(20, 20)
-    knob.Position = UDim2.new(0, Cfg[key] and 23 or 3, 0.5, -10)
-    knob.BackgroundColor3 = Color3.new(1, 1, 1)
-    knob.BorderSizePixel = 0
-    knob.Parent = switch
-    Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
-
-    local click = Instance.new("TextButton")
-    click.Size = UDim2.new(1, 0, 1, 0)
-    click.BackgroundTransparency = 1
-    click.Text = ""
-    click.Parent = row
-
+    row.Size=UDim2.new(1,-6,0,36); row.BackgroundColor3=Colors.surface
+    row.BorderSizePixel=0; row.Parent=parent
+    Instance.new("UICorner",row).CornerRadius=UDim.new(0,8)
+    local stroke=Instance.new("UIStroke")
+    stroke.Color=accent; stroke.Thickness=1
+    stroke.Transparency=Cfg[key] and 0.5 or 0.85; stroke.Parent=row
+    local lbl=Instance.new("TextLabel")
+    lbl.Size=UDim2.new(1,-60,1,0); lbl.Position=UDim2.fromOffset(10,0)
+    lbl.BackgroundTransparency=1; lbl.Text=label; lbl.TextColor3=Colors.text
+    lbl.Font=Enum.Font.GothamMedium; lbl.TextSize=11
+    lbl.TextXAlignment=Enum.TextXAlignment.Left; lbl.Parent=row
+    local sw=Instance.new("Frame")
+    sw.Size=UDim2.fromOffset(36,20); sw.Position=UDim2.new(1,-46,0.5,-10)
+    sw.BackgroundColor3=Cfg[key] and accent or Colors.surfaceL
+    sw.BorderSizePixel=0; sw.Parent=row
+    Instance.new("UICorner",sw).CornerRadius=UDim.new(1,0)
+    local knob=Instance.new("Frame")
+    knob.Size=UDim2.fromOffset(16,16)
+    knob.Position=UDim2.new(0,Cfg[key] and 18 or 2,0.5,-8)
+    knob.BackgroundColor3=Color3.new(1,1,1); knob.BorderSizePixel=0; knob.Parent=sw
+    Instance.new("UICorner",knob).CornerRadius=UDim.new(1,0)
+    local click=Instance.new("TextButton")
+    click.Size=UDim2.new(1,0,1,0); click.BackgroundTransparency=1; click.Text=""
+    click.Parent=row
     local function render()
-        local on = Cfg[key]
-        local tw = TweenInfo.new(0.2, Enum.EasingStyle.Quad)
-        TweenService:Create(switch, tw, { BackgroundColor3 = on and accent or Colors.surfaceL }):Play()
-        TweenService:Create(knob, tw, { Position = UDim2.new(0, on and 23 or 3, 0.5, -10) }):Play()
-        stroke.Transparency = on and 0.5 or 0.85
+        local on=Cfg[key]; local tw=TweenInfo.new(0.18,Enum.EasingStyle.Quad)
+        TweenService:Create(sw,tw,{BackgroundColor3=on and accent or Colors.surfaceL}):Play()
+        TweenService:Create(knob,tw,{Position=UDim2.new(0,on and 18 or 2,0.5,-8)}):Play()
+        stroke.Transparency=on and 0.5 or 0.85
     end
-    render()
-
-    click.MouseButton1Click:Connect(function()
-        Cfg[key] = not Cfg[key]
-        render()
-    end)
+    click.MouseButton1Click:Connect(function() Cfg[key]=not Cfg[key]; render() end)
     return row
 end
 
--- == TABS ==
-local TabDefs = {
-    { name = "PLAYERS", icon = "👥" },
-    { name = "OBJECTS", icon = "📦" },
-    { name = "UTILITY", icon = "⚙️" },
-}
-
+local TabDefs = { {name="PLAYERS"}, {name="OBJECTS"}, {name="UTIL"} }
 for i, t in ipairs(TabDefs) do
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new((1/#TabDefs), -6, 1, -8)
-    btn.BackgroundColor3 = (i == 1) and Colors.accent or Colors.surfaceL
-    btn.Text = t.icon .. " " .. t.name
-    btn.TextColor3 = (i == 1) and Color3.new(1, 1, 1) or Colors.textDim
-    btn.Font = Enum.Font.GothamBold
-    btn.TextSize = 11
-    btn.Parent = TabBar
-    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 7)
-    btn.MouseButton1Click:Connect(function() setTab(i) end)
-    tabButtons[i] = btn
+    local b = Instance.new("TextButton")
+    b.Size=UDim2.new(1/#TabDefs,-4,1,-6)
+    b.BackgroundColor3=(i==1) and Colors.accent or Colors.surfaceL
+    b.Text=t.name; b.TextColor3=(i==1) and Color3.new(1,1,1) or Colors.textDim
+    b.Font=Enum.Font.GothamBold; b.TextSize=9; b.Parent=TabBar
+    Instance.new("UICorner",b).CornerRadius=UDim.new(0,6)
+    b.MouseButton1Click:Connect(function() setTab(i) end)
+    tabButtons[i]=b
 
-    local page = Instance.new("Frame")
-    page.Size = UDim2.new(1, 0, 0, 0)
-    page.AutomaticSize = Enum.AutomaticSize.Y
-    page.BackgroundTransparency = 1
-    page.Visible = (i == 1)
-    page.Parent = Content
-    local pl = Instance.new("UIListLayout")
-    pl.Padding = UDim.new(0, 8)
-    pl.SortOrder = Enum.SortOrder.LayoutOrder
-    pl.Parent = page
-    tabPages[i] = page
+    local pg=Instance.new("Frame")
+    pg.Size=UDim2.new(1,0,0,0); pg.AutomaticSize=Enum.AutomaticSize.Y
+    pg.BackgroundTransparency=1; pg.Visible=(i==1); pg.Parent=Content
+    local lp2=Instance.new("UIListLayout")
+    lp2.Padding=UDim.new(0,5); lp2.SortOrder=Enum.SortOrder.LayoutOrder; lp2.Parent=pg
+    tabPages[i]=pg
 end
 
--- TAB 1: Players
-sectionHeader(tabPages[1], "ИГРОКИ")
-createToggle(tabPages[1], "ESP · Убийцы",   "espKillers",   Colors.red)
-createToggle(tabPages[1], "ESP · Выжившие", "espSurvivors", PlayerColors.Survivor)
+sectionHeader(tabPages[1],"ИГРОКИ")
+createToggle(tabPages[1],"ESP · Убийцы","espKillers",Colors.red)
+createToggle(tabPages[1],"ESP · Выжившие","espSurvivors",PlayerColors.Survivor)
 
--- TAB 2: Objects
-sectionHeader(tabPages[2], "ОБЪЕКТЫ")
-createToggle(tabPages[2], "Генераторы",  "espGenerators", ObjectColors.Generator)
-createToggle(tabPages[2], "Ворота",      "espGates",      Colors.green)
-createToggle(tabPages[2], "Поддоны",     "espPallets",    ObjectColors.Pallet)
-createToggle(tabPages[2], "Окна",        "espWindows",    ObjectColors.Window)
-createToggle(tabPages[2], "Крюки",       "espHooks",      ObjectColors.Hook)
+sectionHeader(tabPages[2],"ОБЪЕКТЫ")
+createToggle(tabPages[2],"Генераторы","espGenerators",ObjectColors.Generator)
+createToggle(tabPages[2],"Ворота","espGates",Colors.green)
+createToggle(tabPages[2],"Поддоны","espPallets",ObjectColors.Pallet)
+createToggle(tabPages[2],"Окна","espWindows",ObjectColors.Window)
+createToggle(tabPages[2],"Крюки","espHooks",ObjectColors.Hook)
 
--- TAB 3: Utility
-sectionHeader(tabPages[3], "АВТОМАТИКА")
-createToggle(tabPages[3], "Auto SkillCheck",    "autoSkillCheck", Colors.green)
-createToggle(tabPages[3], "Next Killer (лобби)", "nextKiller",    Colors.accentL)
-createToggle(tabPages[3], "Killer Warning (!)",  "killerWarn",    Colors.red)
+sectionHeader(tabPages[3],"АВТО")
+createToggle(tabPages[3],"Auto SkillCheck","autoSkillCheck",Colors.green)
+createToggle(tabPages[3],"Next Killer","nextKiller",Colors.accentL)
+createToggle(tabPages[3],"Killer Warn (!)","killerWarn",Colors.red)
+createToggle(tabPages[3],"Full Bright","fullBright",Colors.accentL)
 
-sectionHeader(tabPages[3], "ВИЗУАЛ")
-createToggle(tabPages[3], "Full Bright", "fullBright", Colors.yellow or Colors.accentL)
-
--- == WINDOW CONTROLS ==
-local minimized = false
+-- CONTROLS
+local minimized=false
 MinBtn.MouseButton1Click:Connect(function()
-    minimized = not minimized
-    local tw = TweenInfo.new(0.22, Enum.EasingStyle.Quad)
-    TweenService:Create(Main, tw, { Size = minimized and UDim2.fromOffset(310, 48) or UDim2.fromOffset(310, 500) }):Play()
-    TabBar.Visible = not minimized
-    Content.Visible = not minimized
-    MinBtn.Text = minimized and "+" or "–"
+    minimized=not minimized
+    local tw=TweenInfo.new(0.2,Enum.EasingStyle.Quad)
+    TweenService:Create(Main,tw,{Size=minimized and UDim2.fromOffset(W,38) or UDim2.fromOffset(W,H)}):Play()
+    TabBar.Visible=not minimized; Content.Visible=not minimized
+    MinBtn.Text=minimized and "+" or "–"
 end)
-CloseBtn.MouseButton1Click:Connect(function()
-    MenuGui.Enabled = false
-end)
+CloseBtn.MouseButton1Click:Connect(function() MenuGui.Enabled=false end)
 
--- drag (only over header, exclude right button area)
 local dragging, dragStart, startPos
 UserInputService.InputBegan:Connect(function(input, gp)
     if gp then return end
-    if input.UserInputType ~= Enum.UserInputType.Touch and input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
-    local p = input.Position
-    local hp, hs = Header.AbsolutePosition, Header.AbsoluteSize
-    if p.X >= hp.X and p.X <= hp.X + hs.X - 80 and p.Y >= hp.Y and p.Y <= hp.Y + hs.Y then
-        dragging = true
-        dragStart = p
-        startPos = Main.Position
+    if input.UserInputType~=Enum.UserInputType.Touch and input.UserInputType~=Enum.UserInputType.MouseButton1 then return end
+    local p=input.Position; local hp,hs=Header.AbsolutePosition,Header.AbsoluteSize
+    if p.X>=hp.X and p.X<=hp.X+hs.X-60 and p.Y>=hp.Y and p.Y<=hp.Y+hs.Y then
+        dragging=true; dragStart=p; startPos=Main.Position
     end
 end)
 UserInputService.InputChanged:Connect(function(input)
     if not dragging then return end
-    if input.UserInputType ~= Enum.UserInputType.Touch and input.UserInputType ~= Enum.UserInputType.MouseMovement then return end
-    local d = input.Position - dragStart
-    Main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
+    if input.UserInputType~=Enum.UserInputType.Touch and input.UserInputType~=Enum.UserInputType.MouseMovement then return end
+    local d=input.Position-dragStart
+    Main.Position=UDim2.new(startPos.X.Scale,startPos.X.Offset+d.X,startPos.Y.Scale,startPos.Y.Offset+d.Y)
 end)
 UserInputService.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
-        dragging = false
+    if input.UserInputType==Enum.UserInputType.Touch or input.UserInputType==Enum.UserInputType.MouseButton1 then
+        dragging=false
     end
 end)
 
--- intro animation
-Main.Size = UDim2.fromOffset(0, 0)
-TweenService:Create(Main, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-    Size = UDim2.fromOffset(310, 500),
+Main.Size=UDim2.fromOffset(0,0)
+TweenService:Create(Main,TweenInfo.new(0.22,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{
+    Size=UDim2.fromOffset(W,H),
 }):Play()
 
 -- ================= ESP HELPERS =================
-local ActiveGenerators = {}
-local LastFullESPRefresh = 0
-local LastUpdateTick = 0
+local ActiveGenerators={}
+local LastFullESPRefresh=0
+local LastUpdateTick=0
 
-local function GetGameValue(obj, name)
+local function GetGameValue(obj,name)
     if not obj then return nil end
-    local a = obj:GetAttribute(name)
-    if a ~= nil then return a end
-    local c = obj:FindFirstChild(name)
-    if c then
-        local s, v = pcall(function() return c.Value end)
-        if s then return v end
-    end
+    local a=obj:GetAttribute(name); if a~=nil then return a end
+    local c=obj:FindFirstChild(name)
+    if c then local s,v=pcall(function() return c.Value end); if s then return v end end
     return nil
 end
-
-local function ApplyHighlight(obj, color)
+local function ApplyHighlight(obj,color)
     if not obj then return end
-    local h = obj:FindFirstChild("H") or Instance.new("Highlight")
-    h.Name = "H"
-    h.Adornee = obj
-    h.FillColor = color
-    h.OutlineColor = color
-    h.FillTransparency = 0.8
-    h.OutlineTransparency = 0.3
-    h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-    h.Parent = obj
+    local h=obj:FindFirstChild("H") or Instance.new("Highlight")
+    h.Name="H"; h.Adornee=obj; h.FillColor=color; h.OutlineColor=color
+    h.FillTransparency=0.8; h.OutlineTransparency=0.3
+    h.DepthMode=Enum.HighlightDepthMode.AlwaysOnTop; h.Parent=obj
 end
-
 local function RemoveHighlight(obj)
     if not obj then return end
-    local h = obj:FindFirstChild("H")
-    if h then h:Destroy() end
+    local h=obj:FindFirstChild("H"); if h then h:Destroy() end
 end
-
-local function CreateBillboardTag(text, color, size, textSize)
-    local b = Instance.new("BillboardGui")
-    b.Name = "BitchHook"
-    b.AlwaysOnTop = true
-    b.Size = size or UDim2.new(0, 120, 0, 30)
-    local l = Instance.new("TextLabel")
-    l.Name = "BitchHook"
-    l.Size = UDim2.new(1, 0, 1, 0)
-    l.BackgroundTransparency = 1
-    l.Text = text
-    l.TextColor3 = color
-    l.TextStrokeTransparency = 0
-    l.TextStrokeColor3 = Color3.new(0, 0, 0)
-    l.Font = Enum.Font.GothamBold
-    l.TextSize = textSize or 10
-    l.TextWrapped = true
-    l.RichText = true
-    l.Parent = b
+local function CreateBillboardTag(text,color,size,textSize)
+    local b=Instance.new("BillboardGui"); b.Name="BitchHook"; b.AlwaysOnTop=true
+    b.Size=size or UDim2.new(0,120,0,30)
+    local l=Instance.new("TextLabel")
+    l.Name="BitchHook"; l.Size=UDim2.new(1,0,1,0); l.BackgroundTransparency=1
+    l.Text=text; l.TextColor3=color; l.TextStrokeTransparency=0
+    l.TextStrokeColor3=Color3.new(0,0,0); l.Font=Enum.Font.GothamBold
+    l.TextSize=textSize or 10; l.TextWrapped=true; l.RichText=true; l.Parent=b
     return b
 end
-
 local function cleanupPlayerESP(player)
     if not player.Character then return end
-    local root = player.Character:FindFirstChild("HumanoidRootPart")
+    local root=player.Character:FindFirstChild("HumanoidRootPart")
     if root then
-        for _, n in ipairs({ "BitchHook", "MaskHook" }) do
-            local o = root:FindFirstChild(n)
-            if o then o:Destroy() end
+        for _,n in ipairs({"BitchHook","MaskHook"}) do
+            local o=root:FindFirstChild(n); if o then o:Destroy() end
         end
     end
     RemoveHighlight(player.Character)
-    for _, n in ipairs({ player.Name .. "_Chased", player.Name .. "_Killer" }) do
-        local o = IndicatorGui:FindFirstChild(n)
-        if o then o:Destroy() end
+    for _,n in ipairs({player.Name.."_Chased",player.Name.."_Killer"}) do
+        local o=IndicatorGui:FindFirstChild(n); if o then o:Destroy() end
     end
 end
 
--- ================= ESP PLAYERS =================
 local function updatePlayerNametag(player)
-    if not player.Character then
-        cleanupPlayerESP(player)
-        return
-    end
-    local rootPart = player.Character:FindFirstChild("HumanoidRootPart")
-    local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+    if not player.Character then cleanupPlayerESP(player); return end
+    local rootPart=player.Character:FindFirstChild("HumanoidRootPart")
+    local humanoid=player.Character:FindFirstChildOfClass("Humanoid")
     if not rootPart then return end
-
-    local teamName      = (player.Team and player.Team.Name:lower()) or ""
-    local isKiller      = teamName:find("killer") ~= nil
-    local selectedKiller = GetGameValue(player, "SelectedKiller")
-    local rawMask       = GetGameValue(player, "Mask") or GetGameValue(player.Character, "Mask")
-    local isKnocked     = GetGameValue(player.Character, "Knocked")
-    local isHooked      = GetGameValue(player.Character, "IsHooked")
-    local isChased      = GetGameValue(player.Character, "IsChased")
-
-    local color = isKiller and PlayerColors.Killer or PlayerColors.Survivor
-    if isHooked then
-        color = Color3.fromRGB(255, 182, 193)
-    elseif humanoid and humanoid.Health < humanoid.MaxHealth then
-        color = isKnocked and Color3.fromRGB(200, 100, 0) or Color3.fromRGB(200, 200, 0)
+    local teamName=(player.Team and player.Team.Name:lower()) or ""
+    local isKiller=teamName:find("killer")~=nil
+    local selectedKiller=GetGameValue(player,"SelectedKiller")
+    local rawMask=GetGameValue(player,"Mask") or GetGameValue(player.Character,"Mask")
+    local isKnocked=GetGameValue(player.Character,"Knocked")
+    local isHooked=GetGameValue(player.Character,"IsHooked")
+    local isChased=GetGameValue(player.Character,"IsChased")
+    local color=isKiller and PlayerColors.Killer or PlayerColors.Survivor
+    if isHooked then color=Color3.fromRGB(255,182,193)
+    elseif humanoid and humanoid.Health<humanoid.MaxHealth then
+        color=isKnocked and Color3.fromRGB(200,100,0) or Color3.fromRGB(200,200,0)
     end
-
-    local distance = 0
+    local distance=0
     if LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") then
-        distance = math.floor((rootPart.Position - LP.Character.HumanoidRootPart.Position).Magnitude)
+        distance=math.floor((rootPart.Position-LP.Character.HumanoidRootPart.Position).Magnitude)
     end
-
-    local baseName = (isKiller and selectedKiller and tostring(selectedKiller) ~= "")
+    local baseName=(isKiller and selectedKiller and tostring(selectedKiller)~="")
         and tostring(selectedKiller) or player.Name
-
-    -- name billboard
-    local billboard = rootPart:FindFirstChild("BitchHook")
-    local nameText = baseName .. "\n[" .. distance .. " studs]"
+    local billboard=rootPart:FindFirstChild("BitchHook")
+    local nameText=baseName.."\n["..distance.." studs]"
     if not billboard then
-        billboard = CreateBillboardTag(nameText, color)
-        billboard.Adornee = rootPart
-        billboard.Parent = rootPart
+        billboard=CreateBillboardTag(nameText,color); billboard.Adornee=rootPart; billboard.Parent=rootPart
     else
-        local lbl = billboard:FindFirstChild("BitchHook") or billboard:FindFirstChildOfClass("TextLabel")
-        if lbl then
-            lbl.Text = nameText
-            lbl.TextColor3 = color
-        end
+        local lbl=billboard:FindFirstChild("BitchHook") or billboard:FindFirstChildOfClass("TextLabel")
+        if lbl then lbl.Text=nameText; lbl.TextColor3=color end
     end
-    ApplyHighlight(player.Character, color)
-
-    -- mask tag
-    local hasMask = false
-    if isKiller and string.match(tostring(selectedKiller):lower(), "masked") and rawMask then
-        local sm = tostring(rawMask):lower()
-        for key, name in pairs(MaskNames) do
-            if key:lower() == sm then
-                hasMask = true
-                local mb = rootPart:FindFirstChild("MaskHook")
+    ApplyHighlight(player.Character,color)
+    local hasMask=false
+    if isKiller and string.match(tostring(selectedKiller):lower(),"masked") and rawMask then
+        local sm=tostring(rawMask):lower()
+        for key,name in pairs(MaskNames) do
+            if key:lower()==sm then
+                hasMask=true
+                local mb=rootPart:FindFirstChild("MaskHook")
                 if not mb then
-                    mb = CreateBillboardTag(name, MaskColors[key] or Color3.new(1, 1, 1), UDim2.new(0, 100, 0, 20), 12)
-                    mb.Name = "MaskHook"
-                    mb.StudsOffset = Vector3.new(0, 3, 0)
-                    mb.Adornee = rootPart
-                    mb.Parent = rootPart
+                    mb=CreateBillboardTag(name,MaskColors[key] or Color3.new(1,1,1),UDim2.new(0,100,0,20),12)
+                    mb.Name="MaskHook"; mb.StudsOffset=Vector3.new(0,3,0)
+                    mb.Adornee=rootPart; mb.Parent=rootPart
                 else
-                    local lbl = mb:FindFirstChild("BitchHook") or mb:FindFirstChildOfClass("TextLabel")
-                    if lbl then lbl.Text = name; lbl.TextColor3 = MaskColors[key] or Color3.new(1,1,1) end
+                    local lbl=mb:FindFirstChild("BitchHook") or mb:FindFirstChildOfClass("TextLabel")
+                    if lbl then lbl.Text=name; lbl.TextColor3=MaskColors[key] or Color3.new(1,1,1) end
                 end
                 break
             end
         end
     end
     if not hasMask then
-        local mb = rootPart:FindFirstChild("MaskHook")
-        if mb then mb:Destroy() end
+        local mb=rootPart:FindFirstChild("MaskHook"); if mb then mb:Destroy() end
     end
-
-    -- chased off-screen marker
-    local chased2D = IndicatorGui:FindFirstChild(player.Name .. "_Chased")
+    local chased2D=IndicatorGui:FindFirstChild(player.Name.."_Chased")
     if isChased then
         if not chased2D then
-            chased2D = Instance.new("TextLabel", IndicatorGui)
-            chased2D.Name = player.Name .. "_Chased"
-            chased2D.BackgroundTransparency = 1
-            chased2D.Font = Enum.Font.GothamBold
-            chased2D.TextSize = 24
-            chased2D.TextStrokeTransparency = 0
-            chased2D.AnchorPoint = Vector2.new(0.5, 0.5)
+            chased2D=Instance.new("TextLabel",IndicatorGui)
+            chased2D.Name=player.Name.."_Chased"; chased2D.BackgroundTransparency=1
+            chased2D.Font=Enum.Font.GothamBold; chased2D.TextSize=24
+            chased2D.TextStrokeTransparency=0; chased2D.AnchorPoint=Vector2.new(0.5,0.5)
         end
-        chased2D.Text, chased2D.TextColor3 = "!!", color
-        local sp, onS = Camera:WorldToScreenPoint(rootPart.Position)
-        if onS then
-            chased2D.Visible = false
+        chased2D.Text,chased2D.TextColor3="!!",color
+        local sp,onS=Camera:WorldToScreenPoint(rootPart.Position)
+        if onS then chased2D.Visible=false
         else
-            chased2D.Visible = true
-            local c = Camera.ViewportSize / 2
-            local d = Vector2.new(sp.X, sp.Y) - c
-            if sp.Z < 0 then d = -d end
-            local sc = math.max(math.abs(d.X) / (c.X - 30), math.abs(d.Y) / (c.Y - 30))
-            chased2D.Position = UDim2.new(0, c.X + d.X / (sc == 0 and 1 or sc), 0, c.Y + d.Y / (sc == 0 and 1 or sc))
+            chased2D.Visible=true
+            local c=Camera.ViewportSize/2
+            local d=Vector2.new(sp.X,sp.Y)-c
+            if sp.Z<0 then d=-d end
+            local sc=math.max(math.abs(d.X)/(c.X-30),math.abs(d.Y)/(c.Y-30))
+            chased2D.Position=UDim2.new(0,c.X+d.X/(sc==0 and 1 or sc),0,c.Y+d.Y/(sc==0 and 1 or sc))
         end
-    elseif chased2D then
-        chased2D:Destroy()
-    end
-
-    -- killer off-screen marker
-    local killer2D = IndicatorGui:FindFirstChild(player.Name .. "_Killer")
+    elseif chased2D then chased2D:Destroy() end
+    local killer2D=IndicatorGui:FindFirstChild(player.Name.."_Killer")
     if isKiller then
         if not killer2D then
-            killer2D = Instance.new("TextLabel", IndicatorGui)
-            killer2D.Name = player.Name .. "_Killer"
-            killer2D.BackgroundTransparency = 1
-            killer2D.Font = Enum.Font.GothamBold
-            killer2D.TextSize = 11
-            killer2D.TextStrokeTransparency = 0
-            killer2D.Size = UDim2.new(0, 120, 0, 30)
-            killer2D.RichText = true
-            killer2D.AnchorPoint = Vector2.new(0.5, 0.5)
+            killer2D=Instance.new("TextLabel",IndicatorGui)
+            killer2D.Name=player.Name.."_Killer"; killer2D.BackgroundTransparency=1
+            killer2D.Font=Enum.Font.GothamBold; killer2D.TextSize=11
+            killer2D.TextStrokeTransparency=0
+            killer2D.Size=UDim2.new(0,120,0,30); killer2D.RichText=true
+            killer2D.AnchorPoint=Vector2.new(0.5,0.5)
         end
-        killer2D.Text = baseName .. "\n[" .. distance .. " studs]"
-        killer2D.TextColor3 = color
-        local sp, onS = Camera:WorldToScreenPoint(rootPart.Position)
+        killer2D.Text=baseName.."\n["..distance.." studs]"
+        killer2D.TextColor3=color
+        local sp,onS=Camera:WorldToScreenPoint(rootPart.Position)
         if not onS then
-            killer2D.Visible = true
-            local c = Camera.ViewportSize / 2
-            local d = Vector2.new(sp.X, sp.Y) - c
-            if sp.Z < 0 then d = -d end
-            local sc = math.max(math.abs(d.X) / (c.X - 30), math.abs(d.Y) / (c.Y - 30))
-            killer2D.Position = UDim2.new(0, c.X + d.X / (sc == 0 and 1 or sc), 0, c.Y + d.Y / (sc == 0 and 1 or sc))
-        else
-            killer2D.Visible = false
-        end
-    elseif killer2D then
-        killer2D:Destroy()
-    end
+            killer2D.Visible=true
+            local c=Camera.ViewportSize/2
+            local d=Vector2.new(sp.X,sp.Y)-c
+            if sp.Z<0 then d=-d end
+            local sc=math.max(math.abs(d.X)/(c.X-30),math.abs(d.Y)/(c.Y-30))
+            killer2D.Position=UDim2.new(0,c.X+d.X/(sc==0 and 1 or sc),0,c.Y+d.Y/(sc==0 and 1 or sc))
+        else killer2D.Visible=false end
+    elseif killer2D then killer2D:Destroy() end
 end
 
--- ================= ESP OBJECTS =================
 local function updateGeneratorProgress(gen)
     if not gen or not gen.Parent then return true end
-    local pct = GetGameValue(gen, "RepairProgress") or GetGameValue(gen, "Progress") or 0
-    local bb = gen:FindFirstChild("GenBitchHook")
-    if pct >= 100 then
-        if bb then bb:Destroy() end
-        RemoveHighlight(gen)
-        return true
+    local pct=GetGameValue(gen,"RepairProgress") or GetGameValue(gen,"Progress") or 0
+    local bb=gen:FindFirstChild("GenBitchHook")
+    if pct>=100 then
+        if bb then bb:Destroy() end; RemoveHighlight(gen); return true
     end
-    local cp = math.clamp(pct, 0, 100)
-    local finalColor = cp < 50
-        and ObjectColors.Generator:Lerp(Color3.fromRGB(180, 180, 0), cp / 50)
-        or  Color3.fromRGB(180, 180, 0):Lerp(Color3.fromRGB(0, 150, 0), (cp - 50) / 50)
-    local str = string.format("[%.2f%%]", pct)
+    local cp=math.clamp(pct,0,100)
+    local finalColor=cp<50 and ObjectColors.Generator:Lerp(Color3.fromRGB(180,180,0),cp/50)
+        or Color3.fromRGB(180,180,0):Lerp(Color3.fromRGB(0,150,0),(cp-50)/50)
+    local str=string.format("[%.2f%%]",pct)
     if not bb then
-        bb = CreateBillboardTag(str, finalColor)
-        bb.Name = "GenBitchHook"
-        bb.StudsOffset = Vector3.new(0, 2, 0)
-        bb.Adornee = gen:FindFirstChild("defaultMaterial", true) or gen
-        bb.Parent = gen
+        bb=CreateBillboardTag(str,finalColor); bb.Name="GenBitchHook"
+        bb.StudsOffset=Vector3.new(0,2,0)
+        bb.Adornee=gen:FindFirstChild("defaultMaterial",true) or gen; bb.Parent=gen
     else
-        local lbl = bb:FindFirstChild("BitchHook") or bb:FindFirstChildOfClass("TextLabel")
-        if lbl then lbl.Text = str; lbl.TextColor3 = finalColor end
+        local lbl=bb:FindFirstChild("BitchHook") or bb:FindFirstChildOfClass("TextLabel")
+        if lbl then lbl.Text=str; lbl.TextColor3=finalColor end
     end
     return false
 end
 
 local function RefreshESP()
-    ActiveGenerators = {}
-    -- windows (anywhere)
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj.Name == "Window" then
-            if Cfg.espWindows then ApplyHighlight(obj, ObjectColors.Window)
+    ActiveGenerators={}
+    for _,obj in ipairs(workspace:GetDescendants()) do
+        if obj.Name=="Window" then
+            if Cfg.espWindows then ApplyHighlight(obj,ObjectColors.Window)
             else RemoveHighlight(obj) end
         end
     end
-    local Map = workspace:FindFirstChild("Map")
-    if not Map then return end
-    for _, obj in ipairs(Map:GetDescendants()) do
-        if obj.Name == "Generator" then
+    local Map=workspace:FindFirstChild("Map"); if not Map then return end
+    for _,obj in ipairs(Map:GetDescendants()) do
+        if obj.Name=="Generator" then
             if Cfg.espGenerators then
-                ApplyHighlight(obj, ObjectColors.Generator)
-                table.insert(ActiveGenerators, obj)
+                ApplyHighlight(obj,ObjectColors.Generator); table.insert(ActiveGenerators,obj)
             else
                 RemoveHighlight(obj)
-                local bb = obj:FindFirstChild("GenBitchHook")
-                if bb then bb:Destroy() end
+                local bb=obj:FindFirstChild("GenBitchHook"); if bb then bb:Destroy() end
             end
-        elseif obj.Name == "Hook" then
-            local m = obj:FindFirstChild("Model")
-            if m then
-                for _, p in ipairs(m:GetDescendants()) do
-                    if p:IsA("MeshPart") then
-                        if Cfg.espHooks then ApplyHighlight(p, ObjectColors.Hook)
-                        else RemoveHighlight(p) end
-                    end
+        elseif obj.Name=="Hook" then
+            local m=obj:FindFirstChild("Model")
+            if m then for _,p in ipairs(m:GetDescendants()) do
+                if p:IsA("MeshPart") then
+                    if Cfg.espHooks then ApplyHighlight(p,ObjectColors.Hook)
+                    else RemoveHighlight(p) end
                 end
-            end
-        elseif obj.Name == "Palletwrong" or obj.Name == "Pallet" then
-            if Cfg.espPallets then ApplyHighlight(obj, ObjectColors.Pallet)
+            end end
+        elseif obj.Name=="Palletwrong" or obj.Name=="Pallet" then
+            if Cfg.espPallets then ApplyHighlight(obj,ObjectColors.Pallet)
             else RemoveHighlight(obj) end
-        elseif obj.Name == "Gate" then
-            if Cfg.espGates then ApplyHighlight(obj, ObjectColors.Gate)
+        elseif obj.Name=="Gate" then
+            if Cfg.espGates then ApplyHighlight(obj,ObjectColors.Gate)
             else RemoveHighlight(obj) end
         end
     end
 end
 
--- ================= NEXT KILLER =================
 local function updateNextKillerDisplay()
     if not IndicatorGui then return end
-    local label = IndicatorGui:FindFirstChild("NextKillerDisplay")
-    local team = (LP.Team and LP.Team.Name:lower()) or ""
+    local label=IndicatorGui:FindFirstChild("NextKillerDisplay")
+    local team=(LP.Team and LP.Team.Name:lower()) or ""
     if not Cfg.nextKiller or not (team:find("spectator") or team:find("lobby")) then
-        if label then label:Destroy() end
-        return
+        if label then label:Destroy() end; return
     end
     if not label then
-        label = Instance.new("TextLabel", IndicatorGui)
-        label.Name = "NextKillerDisplay"
-        label.Size = UDim2.new(0, 240, 0, 30)
-        label.Position = UDim2.new(0.5, 0, 0, 45)
-        label.AnchorPoint = Vector2.new(0.5, 0)
-        label.BackgroundTransparency = 0.5
-        label.BackgroundColor3 = Color3.new(0, 0, 0)
-        label.TextColor3 = Color3.new(1, 1, 1)
-        label.Font = Enum.Font.GothamBold
-        label.TextSize = 14
-        label.RichText = true
+        label=Instance.new("TextLabel",IndicatorGui)
+        label.Name="NextKillerDisplay"; label.Size=UDim2.new(0,240,0,30)
+        label.Position=UDim2.new(0.5,0,0,45)
+        label.AnchorPoint=Vector2.new(0.5,0); label.BackgroundTransparency=0.5
+        label.BackgroundColor3=Color3.new(0,0,0); label.TextColor3=Color3.new(1,1,1)
+        label.Font=Enum.Font.GothamBold; label.TextSize=14; label.RichText=true
     end
-    local list = Players:GetPlayers()
-    table.sort(list, function(a, b)
-        local aA = GetGameValue(a, "AllowKiller") or false
-        local bA = GetGameValue(b, "AllowKiller") or false
-        if aA ~= bA then return aA end
-        return (GetGameValue(a, "KillerChance") or 0) > (GetGameValue(b, "KillerChance") or 0)
+    local list=Players:GetPlayers()
+    table.sort(list,function(a,b)
+        local aA=GetGameValue(a,"AllowKiller") or false
+        local bA=GetGameValue(b,"AllowKiller") or false
+        if aA~=bA then return aA end
+        return (GetGameValue(a,"KillerChance") or 0)>(GetGameValue(b,"KillerChance") or 0)
     end)
-    local nk = list[1]
+    local nk=list[1]
     if nk then
-        label.Text = "Next Killer: <font color=\"rgb(255,93,108)\">"
-            .. (nk == LP and "YOU" or tostring(GetGameValue(nk, "SelectedKiller") or nk.Name))
-            .. "</font>"
+        label.Text="Next Killer: <font color=\"rgb(255,93,108)\">"
+            ..(nk==LP and "YOU" or tostring(GetGameValue(nk,"SelectedKiller") or nk.Name)).."</font>"
     end
 end
 
 -- ================= AUTO SKILLCHECK =================
-local TouchID = 8822
-local ActionPath = "Survivor-mob.Controls.action.check"
-local HBConn, VisConn
+local TouchID=8822
+local ActionPath="Survivor-mob.Controls.action.check"
+local HBConn,VisConn
 
 local function GetActionTarget()
-    local cur = PlayerGui
-    for seg in string.gmatch(ActionPath, "[^%.]+") do
-        cur = cur and cur:FindFirstChild(seg)
-    end
+    local cur=PlayerGui
+    for seg in string.gmatch(ActionPath,"[^%.]+") do cur=cur and cur:FindFirstChild(seg) end
     return cur
 end
-
 local function TriggerMobileButton()
-    local b = GetActionTarget()
+    local b=GetActionTarget()
     if b and b:IsA("GuiObject") then
-        local p, s, i = b.AbsolutePosition, b.AbsoluteSize, GuiService:GetGuiInset()
-        local cx, cy = p.X + s.X / 2 + i.X, p.Y + s.Y / 2 + i.Y
+        local p,s,i=b.AbsolutePosition,b.AbsoluteSize,GuiService:GetGuiInset()
+        local cx,cy=p.X+s.X/2+i.X,p.Y+s.Y/2+i.Y
         pcall(function()
-            VirtualInputManager:SendTouchEvent(TouchID, 0, cx, cy)
+            VirtualInputManager:SendTouchEvent(TouchID,0,cx,cy)
             task.wait(0.01)
-            VirtualInputManager:SendTouchEvent(TouchID, 2, cx, cy)
+            VirtualInputManager:SendTouchEvent(TouchID,2,cx,cy)
         end)
     end
 end
-
 local function InitializeAutoSkillCheck()
     task.spawn(function()
-        local prompt = PlayerGui:WaitForChild("SkillCheckPromptGui", 10)
-        local check = prompt and prompt:WaitForChild("Check", 10)
+        local prompt=PlayerGui:WaitForChild("SkillCheckPromptGui",10)
+        local check=prompt and prompt:WaitForChild("Check",10)
         if not check then return end
-        local line, goal = check:WaitForChild("Line"), check:WaitForChild("Goal")
+        local line,goal=check:WaitForChild("Line"),check:WaitForChild("Goal")
         if VisConn then VisConn:Disconnect() end
-        VisConn = check:GetPropertyChangedSignal("Visible"):Connect(function()
+        VisConn=check:GetPropertyChangedSignal("Visible"):Connect(function()
             if not Cfg.autoSkillCheck then return end
-            if LP.Team and LP.Team.Name == "Survivors" and check.Visible then
+            if LP.Team and LP.Team.Name=="Survivors" and check.Visible then
                 if HBConn then HBConn:Disconnect() end
-                HBConn = RunService.Heartbeat:Connect(function()
+                HBConn=RunService.Heartbeat:Connect(function()
                     if not Cfg.autoSkillCheck then
-                        if HBConn then HBConn:Disconnect(); HBConn = nil end
-                        return
+                        if HBConn then HBConn:Disconnect(); HBConn=nil end; return
                     end
-                    local lr, gr = line.Rotation % 360, goal.Rotation % 360
-                    local ss, se = (gr + 101) % 360, (gr + 115) % 360
-                    if (ss > se and (lr >= ss or lr <= se)) or (lr >= ss and lr <= se) then
+                    local lr,gr=line.Rotation%360,goal.Rotation%360
+                    local ss,se=(gr+101)%360,(gr+115)%360
+                    if (ss>se and (lr>=ss or lr<=se)) or (lr>=ss and lr<=se) then
                         TriggerMobileButton()
-                        if HBConn then HBConn:Disconnect(); HBConn = nil end
+                        if HBConn then HBConn:Disconnect(); HBConn=nil end
                     end
                 end)
-            elseif HBConn then
-                HBConn:Disconnect(); HBConn = nil
-            end
+            elseif HBConn then HBConn:Disconnect(); HBConn=nil end
         end)
     end)
 end
 
--- ================= MAIN LOOP =================
 workspace.ChildAdded:Connect(function(c)
-    if c.Name == "Map" then
-        task.wait(1)
-        RefreshESP()
-    end
+    if c.Name=="Map" then task.wait(1); RefreshESP() end
 end)
-
 LP.CharacterAdded:Connect(function()
-    if HBConn then HBConn:Disconnect(); HBConn = nil end
-    if VisConn then VisConn:Disconnect(); VisConn = nil end
-    task.wait(1)
-    InitializeAutoSkillCheck()
+    if HBConn then HBConn:Disconnect(); HBConn=nil end
+    if VisConn then VisConn:Disconnect(); VisConn=nil end
+    task.wait(1); InitializeAutoSkillCheck()
 end)
 
 local function clearKillerWarn()
-    local root = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
-    if root then
-        local w = root:FindFirstChild("KillerWarn")
-        if w then w:Destroy() end
-    end
+    local root=LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+    if root then local w=root:FindFirstChild("KillerWarn"); if w then w:Destroy() end end
 end
 
 RunService.Heartbeat:Connect(function()
-    local now = tick()
-    if now - LastUpdateTick < 0.05 then return end
-    LastUpdateTick = now
+    local now=tick()
+    if now-LastUpdateTick<0.05 then return end
+    LastUpdateTick=now
 
-    -- FullBright
     if Cfg.fullBright then
-        Lighting.Ambient = Color3.fromRGB(255, 255, 255)
-        Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
-        Lighting.Brightness = 2
-        Lighting.ClockTime = 14
-        Lighting.GlobalShadows = false
-        Lighting.FogEnd = 9e9
+        Lighting.Ambient=Color3.fromRGB(255,255,255)
+        Lighting.OutdoorAmbient=Color3.fromRGB(255,255,255)
+        Lighting.Brightness=2; Lighting.ClockTime=14
+        Lighting.GlobalShadows=false; Lighting.FogEnd=9e9
     end
-
-    if now - LastFullESPRefresh > 5 then
-        LastFullESPRefresh = now
-        RefreshESP()
-    end
+    if now-LastFullESPRefresh>5 then LastFullESPRefresh=now; RefreshESP() end
     updateNextKillerDisplay()
 
-    -- players
-    local myRoot = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
-    local killerNearby = false
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= LP then
-            local t = (p.Team and p.Team.Name:lower()) or ""
-            local isKiller = t:find("killer") ~= nil
-            local shouldESP = (isKiller and Cfg.espKillers) or (not isKiller and Cfg.espSurvivors)
-            if shouldESP then
-                updatePlayerNametag(p)
-            else
-                cleanupPlayerESP(p)
-            end
-            if Cfg.killerWarn and isKiller and myRoot
-                and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-                if (p.Character.HumanoidRootPart.Position - myRoot.Position).Magnitude < 99 then
-                    killerNearby = true
+    local myRoot=LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+    local killerNearby=false
+    for _,p in ipairs(Players:GetPlayers()) do
+        if p~=LP then
+            local t=(p.Team and p.Team.Name:lower()) or ""
+            local isKiller=t:find("killer")~=nil
+            local shouldESP=(isKiller and Cfg.espKillers) or (not isKiller and Cfg.espSurvivors)
+            if shouldESP then updatePlayerNametag(p) else cleanupPlayerESP(p) end
+            if Cfg.killerWarn and isKiller and myRoot and p.Character
+                and p.Character:FindFirstChild("HumanoidRootPart") then
+                if (p.Character.HumanoidRootPart.Position-myRoot.Position).Magnitude<99 then
+                    killerNearby=true
                 end
             end
         end
     end
 
-    -- killer warn
     if Cfg.killerWarn and myRoot then
-        local warn = myRoot:FindFirstChild("KillerWarn")
+        local warn=myRoot:FindFirstChild("KillerWarn")
         if killerNearby then
             if not warn then
-                warn = CreateBillboardTag("!", Colors.red, UDim2.new(0, 50, 0, 50), 40)
-                warn.Name = "KillerWarn"
-                warn.StudsOffset = Vector3.new(0, 4, 0)
-                warn.Adornee = myRoot
-                warn.Parent = myRoot
+                warn=CreateBillboardTag("!",Colors.red,UDim2.new(0,50,0,50),40)
+                warn.Name="KillerWarn"; warn.StudsOffset=Vector3.new(0,4,0)
+                warn.Adornee=myRoot; warn.Parent=myRoot
             end
-        elseif warn then
-            warn:Destroy()
-        end
-    elseif not Cfg.killerWarn then
-        clearKillerWarn()
-    end
+        elseif warn then warn:Destroy() end
+    elseif not Cfg.killerWarn then clearKillerWarn() end
 
-    -- generator progress
-    for i = #ActiveGenerators, 1, -1 do
-        local g = ActiveGenerators[i]
+    for i=#ActiveGenerators,1,-1 do
+        local g=ActiveGenerators[i]
         if g and g.Parent and Cfg.espGenerators then
-            if updateGeneratorProgress(g) then table.remove(ActiveGenerators, i) end
-        else
-            table.remove(ActiveGenerators, i)
-        end
+            if updateGeneratorProgress(g) then table.remove(ActiveGenerators,i) end
+        else table.remove(ActiveGenerators,i) end
     end
 end)
 
 Players.PlayerRemoving:Connect(function(p)
-    for _, n in ipairs({ p.Name .. "_Chased", p.Name .. "_Killer", p.Name }) do
-        local o = IndicatorGui:FindFirstChild(n)
-        if o then o:Destroy() end
+    for _,n in ipairs({p.Name.."_Chased",p.Name.."_Killer",p.Name}) do
+        local o=IndicatorGui:FindFirstChild(n); if o then o:Destroy() end
     end
 end)
 
--- ================= INIT =================
 RefreshESP()
 InitializeAutoSkillCheck()
-
-print("[TWKS] Violence District menu loaded. Tap ✦ to interact.")
+print("[TWKS] Compact menu loaded.")
