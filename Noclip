@@ -1,5 +1,5 @@
 -- ============================================================
--- TWKS | Violence District | MOBILE MENU v3 (compact)
+-- TWKS | Violence District | MOBILE MENU v4 (real compact)
 -- Executor: Delta / Fluxus / Hydrogen / Codex (mobile)
 -- ============================================================
 
@@ -14,6 +14,15 @@ local Lighting          = game:GetService("Lighting")
 local LP        = Players.LocalPlayer
 local PlayerGui = LP:WaitForChild("PlayerGui")
 local Camera    = workspace.CurrentCamera
+local CoreGui   = game:GetService("CoreGui")
+
+-- ====== СНОС ВСЕХ СТАРЫХ МЕНЮ (и в CoreGui, и в PlayerGui) ======
+for _, root in ipairs({CoreGui, PlayerGui}) do
+    for _, n in ipairs({"TWKS_Menu","ChasedInds","TWKS"}) do
+        local ok, o = pcall(function() return root:FindFirstChild(n) end)
+        if ok and o then o:Destroy() end
+    end
+end
 
 local Cfg = {
     espKillers=true, espSurvivors=true,
@@ -42,74 +51,75 @@ local MaskColors = {["Richard"]=Color3.fromRGB(255,0,0),["Tony"]=Color3.fromRGB(
     ["Alex"]=Color3.fromRGB(255,255,255)}
 
 -- ================= GUI =================
-for _, n in ipairs({"TWKS_Menu","ChasedInds"}) do
-    local o = PlayerGui:FindFirstChild(n); if o then o:Destroy() end
-end
-
 local MenuGui = Instance.new("ScreenGui")
 MenuGui.Name="TWKS_Menu"; MenuGui.ResetOnSpawn=false; MenuGui.IgnoreGuiInset=true
 MenuGui.ZIndexBehavior=Enum.ZIndexBehavior.Sibling; MenuGui.DisplayOrder=100
-pcall(function() MenuGui.Parent=game:GetService("CoreGui") end)
+pcall(function() MenuGui.Parent=CoreGui end)
 if not MenuGui.Parent then MenuGui.Parent=PlayerGui end
 
 local IndicatorGui = Instance.new("ScreenGui")
 IndicatorGui.Name="ChasedInds"; IndicatorGui.IgnoreGuiInset=true
 IndicatorGui.ResetOnSpawn=false; IndicatorGui.DisplayOrder=999
-pcall(function() IndicatorGui.Parent=game:GetService("CoreGui") end)
+pcall(function() IndicatorGui.Parent=CoreGui end)
 if not IndicatorGui.Parent then IndicatorGui.Parent=PlayerGui end
 
-local W, H = 220, 360
+-- ==== базовый размер уменьшен: 180x280 + UIScale 0.9 ====
+local W, H = 180, 280
 local Main = Instance.new("Frame")
 Main.Size=UDim2.fromOffset(W,H)
 Main.Position=UDim2.new(0.5,-W/2,0.5,-H/2)
 Main.BackgroundColor3=Colors.bg; Main.BorderSizePixel=0; Main.Parent=MenuGui
-Instance.new("UICorner",Main).CornerRadius=UDim.new(0,12)
+Instance.new("UICorner",Main).CornerRadius=UDim.new(0,10)
+
+local uiscale = Instance.new("UIScale")
+uiscale.Scale = 0.9
+uiscale.Parent = Main
 
 local Shadow = Instance.new("Frame")
-Shadow.Size=UDim2.new(1,8,1,8); Shadow.Position=UDim2.new(0,-4,0,-4)
+Shadow.Size=UDim2.new(1,6,1,6); Shadow.Position=UDim2.new(0,-3,0,-3)
 Shadow.BackgroundColor3=Color3.new(0,0,0); Shadow.BackgroundTransparency=0.55
 Shadow.BorderSizePixel=0; Shadow.ZIndex=0; Shadow.Parent=Main
-Instance.new("UICorner",Shadow).CornerRadius=UDim.new(0,14)
+Instance.new("UICorner",Shadow).CornerRadius=UDim.new(0,12)
 
 local glow = Instance.new("UIStroke")
 glow.Color=Colors.accent; glow.Thickness=1; glow.Transparency=0.6; glow.Parent=Main
 
--- HEADER
+-- HEADER (32px)
 local Header = Instance.new("Frame")
-Header.Size=UDim2.new(1,0,0,38); Header.BackgroundColor3=Colors.surface
+Header.Size=UDim2.new(1,0,0,32); Header.BackgroundColor3=Colors.surface
 Header.BorderSizePixel=0; Header.Parent=Main
-Instance.new("UICorner",Header).CornerRadius=UDim.new(0,12)
+Instance.new("UICorner",Header).CornerRadius=UDim.new(0,10)
 
 local hg = Instance.new("UIGradient")
 hg.Color=ColorSequence.new(Colors.surface,Color3.fromRGB(50,40,80)); hg.Rotation=90; hg.Parent=Header
 
 local HeaderMask = Instance.new("Frame")
-HeaderMask.Size=UDim2.new(1,0,0,10); HeaderMask.Position=UDim2.new(0,0,1,-10)
+HeaderMask.Size=UDim2.new(1,0,0,8); HeaderMask.Position=UDim2.new(0,0,1,-8)
 HeaderMask.BackgroundColor3=Colors.surface; HeaderMask.BorderSizePixel=0; HeaderMask.Parent=Header
 
 local Title = Instance.new("TextLabel")
-Title.Size=UDim2.new(1,-80,1,0); Title.Position=UDim2.fromOffset(12,0)
-Title.BackgroundTransparency=1; Title.Text="✦ TWKS · VD"
-Title.TextColor3=Colors.text; Title.Font=Enum.Font.GothamBold; Title.TextSize=13
+Title.Size=UDim2.new(1,-70,1,0); Title.Position=UDim2.fromOffset(10,0)
+Title.BackgroundTransparency=1; Title.Text="✦ TWKS"
+Title.TextColor3=Colors.text; Title.Font=Enum.Font.GothamBold; Title.TextSize=11
 Title.TextXAlignment=Enum.TextXAlignment.Left; Title.Parent=Header
 
 local MinBtn = Instance.new("TextButton")
-MinBtn.Size=UDim2.fromOffset(24,24); MinBtn.Position=UDim2.new(1,-56,0.5,-12)
+MinBtn.Size=UDim2.fromOffset(22,22); MinBtn.Position=UDim2.new(1,-50,0.5,-11)
 MinBtn.BackgroundColor3=Colors.surfaceL; MinBtn.Text="–"; MinBtn.TextColor3=Colors.text
-MinBtn.Font=Enum.Font.GothamBold; MinBtn.TextSize=16; MinBtn.Parent=Header
-Instance.new("UICorner",MinBtn).CornerRadius=UDim.new(0,6)
+MinBtn.Font=Enum.Font.GothamBold; MinBtn.TextSize=14; MinBtn.Parent=Header
+Instance.new("UICorner",MinBtn).CornerRadius=UDim.new(0,5)
 
 local CloseBtn = Instance.new("TextButton")
-CloseBtn.Size=UDim2.fromOffset(24,24); CloseBtn.Position=UDim2.new(1,-28,0.5,-12)
+CloseBtn.Size=UDim2.fromOffset(22,22); CloseBtn.Position=UDim2.new(1,-25,0.5,-11)
 CloseBtn.BackgroundColor3=Colors.red; CloseBtn.Text="×"; CloseBtn.TextColor3=Colors.text
-CloseBtn.Font=Enum.Font.GothamBold; CloseBtn.TextSize=18; CloseBtn.Parent=Header
-Instance.new("UICorner",CloseBtn).CornerRadius=UDim.new(0,6)
+CloseBtn.Font=Enum.Font.GothamBold; CloseBtn.TextSize=16; CloseBtn.Parent=Header
+Instance.new("UICorner",CloseBtn).CornerRadius=UDim.new(0,5)
 
--- TABS
+-- TABS (24px)
 local TabBar = Instance.new("Frame")
-TabBar.Size=UDim2.new(1,-14,0,30); TabBar.Position=UDim2.fromOffset(7,44)
+TabBar.Size=UDim2.new(1,-12,0,24); TabBar.Position=UDim2.fromOffset(6,38)
 TabBar.BackgroundColor3=Colors.surface; TabBar.BorderSizePixel=0; TabBar.Parent=Main
-Instance.new("UICorner",TabBar).CornerRadius=UDim.new(0,8)
+Instance.new("UICorner",TabBar).CornerRadius=UDim.new(0,6)
 local tl = Instance.new("UIListLayout")
 tl.FillDirection=Enum.FillDirection.Horizontal
 tl.HorizontalAlignment=Enum.HorizontalAlignment.Center
@@ -117,15 +127,15 @@ tl.VerticalAlignment=Enum.VerticalAlignment.Center
 tl.Padding=UDim.new(0,3); tl.Parent=TabBar
 
 local Content = Instance.new("ScrollingFrame")
-Content.Size=UDim2.new(1,-12,1,-84); Content.Position=UDim2.fromOffset(6,80)
+Content.Size=UDim2.new(1,-10,1,-68); Content.Position=UDim2.fromOffset(5,66)
 Content.BackgroundTransparency=1; Content.BorderSizePixel=0
 Content.ScrollBarThickness=2; Content.ScrollBarImageColor3=Colors.accent
 Content.AutomaticCanvasSize=Enum.AutomaticSize.Y
 Content.CanvasSize=UDim2.new(0,0,0,0); Content.Parent=Main
 local ll = Instance.new("UIListLayout")
-ll.Padding=UDim.new(0,5); ll.SortOrder=Enum.SortOrder.LayoutOrder; ll.Parent=Content
+ll.Padding=UDim.new(0,4); ll.SortOrder=Enum.SortOrder.LayoutOrder; ll.Parent=Content
 local pl = Instance.new("UIPadding")
-pl.PaddingTop=UDim.new(0,3); pl.PaddingBottom=UDim.new(0,6); pl.Parent=Content
+pl.PaddingTop=UDim.new(0,2); pl.PaddingBottom=UDim.new(0,4); pl.Parent=Content
 
 local tabPages, tabButtons = {}, {}
 local function setTab(idx)
@@ -139,9 +149,9 @@ end
 
 local function sectionHeader(parent, text)
     local l = Instance.new("TextLabel")
-    l.Size=UDim2.new(1,-6,0,16); l.BackgroundTransparency=1
+    l.Size=UDim2.new(1,-4,0,12); l.BackgroundTransparency=1
     l.Text="  "..text; l.TextColor3=Colors.accentL
-    l.Font=Enum.Font.GothamBold; l.TextSize=10
+    l.Font=Enum.Font.GothamBold; l.TextSize=8
     l.TextXAlignment=Enum.TextXAlignment.Left; l.Parent=parent
     return l
 end
@@ -149,34 +159,34 @@ end
 local function createToggle(parent, label, key, accent)
     accent = accent or Colors.accent
     local row = Instance.new("Frame")
-    row.Size=UDim2.new(1,-6,0,36); row.BackgroundColor3=Colors.surface
+    row.Size=UDim2.new(1,-4,0,28); row.BackgroundColor3=Colors.surface
     row.BorderSizePixel=0; row.Parent=parent
-    Instance.new("UICorner",row).CornerRadius=UDim.new(0,8)
+    Instance.new("UICorner",row).CornerRadius=UDim.new(0,6)
     local stroke=Instance.new("UIStroke")
     stroke.Color=accent; stroke.Thickness=1
     stroke.Transparency=Cfg[key] and 0.5 or 0.85; stroke.Parent=row
     local lbl=Instance.new("TextLabel")
-    lbl.Size=UDim2.new(1,-60,1,0); lbl.Position=UDim2.fromOffset(10,0)
+    lbl.Size=UDim2.new(1,-46,1,0); lbl.Position=UDim2.fromOffset(8,0)
     lbl.BackgroundTransparency=1; lbl.Text=label; lbl.TextColor3=Colors.text
-    lbl.Font=Enum.Font.GothamMedium; lbl.TextSize=11
+    lbl.Font=Enum.Font.GothamMedium; lbl.TextSize=10
     lbl.TextXAlignment=Enum.TextXAlignment.Left; lbl.Parent=row
     local sw=Instance.new("Frame")
-    sw.Size=UDim2.fromOffset(36,20); sw.Position=UDim2.new(1,-46,0.5,-10)
+    sw.Size=UDim2.fromOffset(30,16); sw.Position=UDim2.new(1,-38,0.5,-8)
     sw.BackgroundColor3=Cfg[key] and accent or Colors.surfaceL
     sw.BorderSizePixel=0; sw.Parent=row
     Instance.new("UICorner",sw).CornerRadius=UDim.new(1,0)
     local knob=Instance.new("Frame")
-    knob.Size=UDim2.fromOffset(16,16)
-    knob.Position=UDim2.new(0,Cfg[key] and 18 or 2,0.5,-8)
+    knob.Size=UDim2.fromOffset(12,12)
+    knob.Position=UDim2.new(0,Cfg[key] and 16 or 2,0.5,-6)
     knob.BackgroundColor3=Color3.new(1,1,1); knob.BorderSizePixel=0; knob.Parent=sw
     Instance.new("UICorner",knob).CornerRadius=UDim.new(1,0)
     local click=Instance.new("TextButton")
     click.Size=UDim2.new(1,0,1,0); click.BackgroundTransparency=1; click.Text=""
     click.Parent=row
     local function render()
-        local on=Cfg[key]; local tw=TweenInfo.new(0.18,Enum.EasingStyle.Quad)
+        local on=Cfg[key]; local tw=TweenInfo.new(0.16,Enum.EasingStyle.Quad)
         TweenService:Create(sw,tw,{BackgroundColor3=on and accent or Colors.surfaceL}):Play()
-        TweenService:Create(knob,tw,{Position=UDim2.new(0,on and 18 or 2,0.5,-8)}):Play()
+        TweenService:Create(knob,tw,{Position=UDim2.new(0,on and 16 or 2,0.5,-6)}):Play()
         stroke.Transparency=on and 0.5 or 0.85
     end
     click.MouseButton1Click:Connect(function() Cfg[key]=not Cfg[key]; render() end)
@@ -186,11 +196,11 @@ end
 local TabDefs = { {name="PLAYERS"}, {name="OBJECTS"}, {name="UTIL"} }
 for i, t in ipairs(TabDefs) do
     local b = Instance.new("TextButton")
-    b.Size=UDim2.new(1/#TabDefs,-4,1,-6)
+    b.Size=UDim2.new(1/#TabDefs,-3,1,-4)
     b.BackgroundColor3=(i==1) and Colors.accent or Colors.surfaceL
     b.Text=t.name; b.TextColor3=(i==1) and Color3.new(1,1,1) or Colors.textDim
-    b.Font=Enum.Font.GothamBold; b.TextSize=9; b.Parent=TabBar
-    Instance.new("UICorner",b).CornerRadius=UDim.new(0,6)
+    b.Font=Enum.Font.GothamBold; b.TextSize=8; b.Parent=TabBar
+    Instance.new("UICorner",b).CornerRadius=UDim.new(0,4)
     b.MouseButton1Click:Connect(function() setTab(i) end)
     tabButtons[i]=b
 
@@ -198,13 +208,13 @@ for i, t in ipairs(TabDefs) do
     pg.Size=UDim2.new(1,0,0,0); pg.AutomaticSize=Enum.AutomaticSize.Y
     pg.BackgroundTransparency=1; pg.Visible=(i==1); pg.Parent=Content
     local lp2=Instance.new("UIListLayout")
-    lp2.Padding=UDim.new(0,5); lp2.SortOrder=Enum.SortOrder.LayoutOrder; lp2.Parent=pg
+    lp2.Padding=UDim.new(0,4); lp2.SortOrder=Enum.SortOrder.LayoutOrder; lp2.Parent=pg
     tabPages[i]=pg
 end
 
 sectionHeader(tabPages[1],"ИГРОКИ")
-createToggle(tabPages[1],"ESP · Убийцы","espKillers",Colors.red)
-createToggle(tabPages[1],"ESP · Выжившие","espSurvivors",PlayerColors.Survivor)
+createToggle(tabPages[1],"ESP Убийцы","espKillers",Colors.red)
+createToggle(tabPages[1],"ESP Выжившие","espSurvivors",PlayerColors.Survivor)
 
 sectionHeader(tabPages[2],"ОБЪЕКТЫ")
 createToggle(tabPages[2],"Генераторы","espGenerators",ObjectColors.Generator)
@@ -216,15 +226,15 @@ createToggle(tabPages[2],"Крюки","espHooks",ObjectColors.Hook)
 sectionHeader(tabPages[3],"АВТО")
 createToggle(tabPages[3],"Auto SkillCheck","autoSkillCheck",Colors.green)
 createToggle(tabPages[3],"Next Killer","nextKiller",Colors.accentL)
-createToggle(tabPages[3],"Killer Warn (!)","killerWarn",Colors.red)
+createToggle(tabPages[3],"Killer Warn","killerWarn",Colors.red)
 createToggle(tabPages[3],"Full Bright","fullBright",Colors.accentL)
 
 -- CONTROLS
 local minimized=false
 MinBtn.MouseButton1Click:Connect(function()
     minimized=not minimized
-    local tw=TweenInfo.new(0.2,Enum.EasingStyle.Quad)
-    TweenService:Create(Main,tw,{Size=minimized and UDim2.fromOffset(W,38) or UDim2.fromOffset(W,H)}):Play()
+    local tw=TweenInfo.new(0.18,Enum.EasingStyle.Quad)
+    TweenService:Create(Main,tw,{Size=minimized and UDim2.fromOffset(W,32) or UDim2.fromOffset(W,H)}):Play()
     TabBar.Visible=not minimized; Content.Visible=not minimized
     MinBtn.Text=minimized and "+" or "–"
 end)
@@ -235,7 +245,7 @@ UserInputService.InputBegan:Connect(function(input, gp)
     if gp then return end
     if input.UserInputType~=Enum.UserInputType.Touch and input.UserInputType~=Enum.UserInputType.MouseButton1 then return end
     local p=input.Position; local hp,hs=Header.AbsolutePosition,Header.AbsoluteSize
-    if p.X>=hp.X and p.X<=hp.X+hs.X-60 and p.Y>=hp.Y and p.Y<=hp.Y+hs.Y then
+    if p.X>=hp.X and p.X<=hp.X+hs.X-55 and p.Y>=hp.Y and p.Y<=hp.Y+hs.Y then
         dragging=true; dragStart=p; startPos=Main.Position
     end
 end)
@@ -252,7 +262,7 @@ UserInputService.InputEnded:Connect(function(input)
 end)
 
 Main.Size=UDim2.fromOffset(0,0)
-TweenService:Create(Main,TweenInfo.new(0.22,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{
+TweenService:Create(Main,TweenInfo.new(0.2,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{
     Size=UDim2.fromOffset(W,H),
 }):Play()
 
@@ -608,4 +618,4 @@ end)
 
 RefreshESP()
 InitializeAutoSkillCheck()
-print("[TWKS] Compact menu loaded.")
+print("[TWKS] v4 compact menu loaded.")
