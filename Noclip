@@ -1,6 +1,6 @@
 -- ============================================================
--- TWKS | Violence District | MOBILE MENU v5
--- + Переключение IDEAL / SAFE для Auto SkillCheck
+-- TWKS | Violence District | MOBILE MENU v6
+-- + Явный выбор режима SkillCheck: IDEAL / SAFE
 -- Executor: Delta / Fluxus / Hydrogen / Codex (mobile)
 -- ============================================================
 
@@ -17,18 +17,31 @@ local PlayerGui = LP:WaitForChild("PlayerGui")
 local Camera    = workspace.CurrentCamera
 local CoreGui   = game:GetService("CoreGui")
 
-for _, root in ipairs({CoreGui, PlayerGui}) do
-    for _, n in ipairs({"TWKS_Menu","ChasedInds","TWKS"}) do
-        local ok, o = pcall(function() return root:FindFirstChild(n) end)
-        if ok and o then o:Destroy() end
+-- ====== ЖЁСТКАЯ ОЧИСТКА СТАРЫХ МЕНЮ (3 прохода с задержкой) ======
+local function purgeOld()
+    for _, root in ipairs({CoreGui, PlayerGui}) do
+        local ok, kids = pcall(function() return root:GetChildren() end)
+        if ok and kids then
+            for _, obj in ipairs(kids) do
+                if obj:IsA("ScreenGui") then
+                    local n = obj.Name
+                    if n == "TWKS_Menu" or n == "ChasedInds" or n:find("TWKS") or n:find("twks") then
+                        pcall(function() obj:Destroy() end)
+                    end
+                end
+            end
+        end
     end
 end
+purgeOld()
+task.delay(0.5, purgeOld)
+task.delay(1.5, purgeOld)
 
 local Cfg = {
     espKillers=true, espSurvivors=true,
     espGenerators=true, espGates=true, espPallets=true, espWindows=true, espHooks=true,
     autoSkillCheck=true,
-    skillCheckPerfect=true,  -- true = IDEAL (узкое окно), false = SAFE (широкое)
+    skillCheckPerfect=true,  -- true = IDEAL, false = SAFE
     nextKiller=true, killerWarn=true, fullBright=true,
 }
 
@@ -54,18 +67,18 @@ local MaskColors = {["Richard"]=Color3.fromRGB(255,0,0),["Tony"]=Color3.fromRGB(
 
 -- ================= GUI =================
 local MenuGui = Instance.new("ScreenGui")
-MenuGui.Name="TWKS_Menu"; MenuGui.ResetOnSpawn=false; MenuGui.IgnoreGuiInset=true
+MenuGui.Name="TWKS_Menu_v6"; MenuGui.ResetOnSpawn=false; MenuGui.IgnoreGuiInset=true
 MenuGui.ZIndexBehavior=Enum.ZIndexBehavior.Sibling; MenuGui.DisplayOrder=100
 pcall(function() MenuGui.Parent=CoreGui end)
 if not MenuGui.Parent then MenuGui.Parent=PlayerGui end
 
 local IndicatorGui = Instance.new("ScreenGui")
-IndicatorGui.Name="ChasedInds"; IndicatorGui.IgnoreGuiInset=true
+IndicatorGui.Name="ChasedInds_v6"; IndicatorGui.IgnoreGuiInset=true
 IndicatorGui.ResetOnSpawn=false; IndicatorGui.DisplayOrder=999
 pcall(function() IndicatorGui.Parent=CoreGui end)
 if not IndicatorGui.Parent then IndicatorGui.Parent=PlayerGui end
 
-local W, H = 180, 280
+local W, H = 190, 300
 local Main = Instance.new("Frame")
 Main.Size=UDim2.fromOffset(W,H)
 Main.Position=UDim2.new(0.5,-W/2,0.5,-H/2)
@@ -97,7 +110,7 @@ HeaderMask.BackgroundColor3=Colors.surface; HeaderMask.BorderSizePixel=0; Header
 
 local Title = Instance.new("TextLabel")
 Title.Size=UDim2.new(1,-70,1,0); Title.Position=UDim2.fromOffset(10,0)
-Title.BackgroundTransparency=1; Title.Text="✦ TWKS"
+Title.BackgroundTransparency=1; Title.Text="✦ TWKS v6"
 Title.TextColor3=Colors.text; Title.Font=Enum.Font.GothamBold; Title.TextSize=11
 Title.TextXAlignment=Enum.TextXAlignment.Left; Title.Parent=Header
 
@@ -190,44 +203,74 @@ local function createToggle(parent, label, key, accent)
     return row
 end
 
--- === НОВОЕ: переключатель между двумя состояниями (mode-циклер) ===
-local function createModeRow(parent, label, key, values, colors)
-    local idx = 1
-    for i, v in ipairs(values) do
-        if Cfg[key] == v.value then idx = i; break end
+-- ============= SEGMENTED CONTROL (два отдельных кликабельных режима) =============
+local function createSegmented(parent, label, key, options, colors)
+    local row = Instance.new("Frame")
+    row.Size = UDim2.new(1, -4, 0, 32)
+    row.BackgroundColor3 = Colors.surface
+    row.BorderSizePixel = 0
+    row.Parent = parent
+    Instance.new("UICorner", row).CornerRadius = UDim.new(0, 6)
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, -90, 1, 0)
+    lbl.Position = UDim2.fromOffset(8, 0)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = label
+    lbl.TextColor3 = Colors.text
+    lbl.Font = Enum.Font.GothamMedium
+    lbl.TextSize = 10
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.Parent = row
+
+    -- контейнер для двух кнопок
+    local segW = 76
+    local btnW = 36
+    local segFrame = Instance.new("Frame")
+    segFrame.Size = UDim2.fromOffset(segW, 22)
+    segFrame.Position = UDim2.new(1, -segW - 4, 0.5, -11)
+    segFrame.BackgroundColor3 = Colors.surfaceL
+    segFrame.BorderSizePixel = 0
+    segFrame.Parent = row
+    Instance.new("UICorner", segFrame).CornerRadius = UDim.new(0, 5)
+
+    local buttons = {}
+    for i, opt in ipairs(options) do
+        local btn = Instance.new("TextButton")
+        btn.Size = UDim2.fromOffset(btnW, 18)
+        btn.Position = UDim2.fromOffset(2 + (i-1)*(btnW+1), 2)
+        btn.BackgroundColor3 = Colors.surfaceL
+        btn.Text = opt.name
+        btn.TextColor3 = Colors.textDim
+        btn.Font = Enum.Font.GothamBold
+        btn.TextSize = 8
+        btn.BorderSizePixel = 0
+        btn.AutoButtonColor = false
+        btn.Parent = segFrame
+        Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 4)
+        buttons[i] = btn
     end
 
-    local row = Instance.new("Frame")
-    row.Size=UDim2.new(1,-4,0,28); row.BackgroundColor3=Colors.surface
-    row.BorderSizePixel=0; row.Parent=parent
-    Instance.new("UICorner",row).CornerRadius=UDim.new(0,6)
-    local stroke=Instance.new("UIStroke")
-    stroke.Color=colors[idx] or Colors.accent; stroke.Thickness=1
-    stroke.Transparency=0.4; stroke.Parent=row
+    local function render()
+        for i, opt in ipairs(options) do
+            local active = (Cfg[key] == opt.value)
+            local tw = TweenInfo.new(0.15, Enum.EasingStyle.Quad)
+            TweenService:Create(buttons[i], tw, {
+                BackgroundColor3 = active and (colors[i] or Colors.accent) or Colors.surfaceL,
+                TextColor3 = active and Color3.new(1,1,1) or Colors.textDim,
+            }):Play()
+        end
+    end
+    render()
 
-    local lbl=Instance.new("TextLabel")
-    lbl.Size=UDim2.new(1,-70,1,0); lbl.Position=UDim2.fromOffset(8,0)
-    lbl.BackgroundTransparency=1; lbl.Text=label; lbl.TextColor3=Colors.text
-    lbl.Font=Enum.Font.GothamMedium; lbl.TextSize=10
-    lbl.TextXAlignment=Enum.TextXAlignment.Left; lbl.Parent=row
-
-    local valLbl=Instance.new("TextLabel")
-    valLbl.Size=UDim2.fromOffset(56,20); valLbl.Position=UDim2.new(1,-60,0.5,-10)
-    valLbl.BackgroundColor3=colors[idx] or Colors.accent; valLbl.TextColor3=Color3.new(1,1,1)
-    valLbl.Font=Enum.Font.GothamBold; valLbl.TextSize=9; valLbl.Text=values[idx].name
-    valLbl.Parent=row
-    Instance.new("UICorner",valLbl).CornerRadius=UDim.new(0,5)
-
-    local click=Instance.new("TextButton")
-    click.Size=UDim2.new(1,0,1,0); click.BackgroundTransparency=1; click.Text=""
-    click.Parent=row
-    click.MouseButton1Click:Connect(function()
-        idx = idx % #values + 1
-        Cfg[key] = values[idx].value
-        valLbl.Text = values[idx].name
-        valLbl.BackgroundColor3 = colors[idx] or Colors.accent
-        stroke.Color = colors[idx] or Colors.accent
-    end)
+    for i, opt in ipairs(options) do
+        buttons[i].MouseButton1Click:Connect(function()
+            Cfg[key] = opt.value
+            render()
+            print("[TWKS] SkillCheck mode =", opt.name)
+        end)
+    end
+    return row
 end
 
 local TabDefs = { {name="PLAYERS"}, {name="OBJECTS"}, {name="UTIL"} }
@@ -260,12 +303,13 @@ createToggle(tabPages[2],"Поддоны","espPallets",ObjectColors.Pallet)
 createToggle(tabPages[2],"Окна","espWindows",ObjectColors.Window)
 createToggle(tabPages[2],"Крюки","espHooks",ObjectColors.Hook)
 
-sectionHeader(tabPages[3],"АВТО")
+sectionHeader(tabPages[3],"SKILLCHECK")
 createToggle(tabPages[3],"Auto SkillCheck","autoSkillCheck",Colors.green)
--- 👇 новый переключатель режима
-createModeRow(tabPages[3],"SkillCheck Mode","skillCheckPerfect",
+createSegmented(tabPages[3],"Режим","skillCheckPerfect",
     { {name="IDEAL", value=true}, {name="SAFE", value=false} },
     { Colors.green, Colors.accentL })
+
+sectionHeader(tabPages[3],"ПРОЧЕЕ")
 createToggle(tabPages[3],"Next Killer","nextKiller",Colors.accentL)
 createToggle(tabPages[3],"Killer Warn","killerWarn",Colors.red)
 createToggle(tabPages[3],"Full Bright","fullBright",Colors.accentL)
@@ -578,10 +622,10 @@ local function InitializeAutoSkillCheck()
                     local lr,gr=line.Rotation%360,goal.Rotation%360
                     local ss,se
                     if Cfg.skillCheckPerfect then
-                        -- IDEAL: узкое окно прямо в "perfect" зоне
+                        -- IDEAL: строго в perfect-зону (14°)
                         ss,se = (gr+101)%360, (gr+115)%360
                     else
-                        -- SAFE: расширенное окно, ловит и "good" и "great" с запасом
+                        -- SAFE: расширенное окно (30°) — страхует от лагов
                         ss,se = (gr+95)%360, (gr+125)%360
                     end
                     if (ss>se and (lr>=ss or lr<=se)) or (lr>=ss and lr<=se) then
@@ -666,4 +710,4 @@ end)
 
 RefreshESP()
 InitializeAutoSkillCheck()
-print("[TWKS] v5 loaded — IDEAL/SAFE skillcheck available in UTIL tab.")
+print("[TWKS] v6 loaded — open UTIL tab → 'Режим' → tap IDEAL or SAFE.")
