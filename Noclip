@@ -1,713 +1,2168 @@
--- ============================================================
--- TWKS | Violence District | MOBILE MENU v6
--- + Явный выбор режима SkillCheck: IDEAL / SAFE
--- Executor: Delta / Fluxus / Hydrogen / Codex (mobile)
--- ============================================================
+local function detectMobilePlatform()
+    local UserInputService = game:GetService("UserInputService")
+    
+    
+    local hasTouchScreen = UserInputService.TouchEnabled
+    
+    
+    local camera = workspace.CurrentCamera
+    local viewportSize = camera and camera.ViewportSize or Vector2.new(0, 0)
+    local isSmallScreen = viewportSize.X <= 1024 or viewportSize.Y <= 768
+    
+    
+    local hasGyroscope = UserInputService.GyroscopeEnabled or UserInputService.AccelerometerEnabled
+    
+    
+    local noKeyboard = not UserInputService.KeyboardEnabled
+    
+    
+    local executorName = identifyexecutor and identifyexecutor() or "Unknown"
+    local isMobileExecutor = executorName:lower():find("delta") or 
+                             executorName:lower():find("arceus") or
+                             executorName:lower():find("fluxus") or
+                             executorName:lower():find("krnl")
+    
+    
+    
+    local isMobile = hasTouchScreen and (noKeyboard or isSmallScreen or hasGyroscope or isMobileExecutor)
+    
+    
+    if hasTouchScreen and isMobileExecutor then
+        isMobile = true
+    end
+    
+    return isMobile
+end
 
-local Players           = game:GetService("Players")
-local RunService        = game:GetService("RunService")
-local VirtualInputManager = game:GetService("VirtualInputManager")
-local GuiService        = game:GetService("GuiService")
-local UserInputService  = game:GetService("UserInputService")
-local TweenService      = game:GetService("TweenService")
-local Lighting          = game:GetService("Lighting")
+local isMobile = detectMobilePlatform()
+local executorName = identifyexecutor and identifyexecutor() or "Unknown"
 
-local LP        = Players.LocalPlayer
-local PlayerGui = LP:WaitForChild("PlayerGui")
-local Camera    = workspace.CurrentCamera
-local CoreGui   = game:GetService("CoreGui")
+print("=== Violence District v2.2 Mobile Compatible ===")
+print("Platform: " .. (isMobile and "Mobile" or "PC"))
+print("Executor: " .. executorName)
+print("============================================")
 
--- ====== ЖЁСТКАЯ ОЧИСТКА СТАРЫХ МЕНЮ (3 прохода с задержкой) ======
-local function purgeOld()
-    for _, root in ipairs({CoreGui, PlayerGui}) do
-        local ok, kids = pcall(function() return root:GetChildren() end)
-        if ok and kids then
-            for _, obj in ipairs(kids) do
-                if obj:IsA("ScreenGui") then
-                    local n = obj.Name
-                    if n == "TWKS_Menu" or n == "ChasedInds" or n:find("TWKS") or n:find("twks") then
-                        pcall(function() obj:Destroy() end)
-                    end
-                end
+
+local function safeHttpGet(url)
+    local success, result
+    
+    
+    if game.HttpGet then
+        success, result = pcall(function()
+            return game:HttpGet(url)
+        end)
+        if success then return result end
+    end
+    
+    if syn and syn.request then
+        success, result = pcall(function()
+            return syn.request({Url = url, Method = "GET"}).Body
+        end)
+        if success then return result end
+    end
+    
+    if http and http.request then
+        success, result = pcall(function()
+            return http.request({Url = url, Method = "GET"}).Body
+        end)
+        if success then return result end
+    end
+    
+    if http_request then
+        success, result = pcall(function()
+            return http_request({Url = url, Method = "GET"}).Body
+        end)
+        if success then return result end
+    end
+    
+    if request then
+        success, result = pcall(function()
+            return request({Url = url, Method = "GET"}).Body
+        end)
+        if success then return result end
+    end
+    
+    error("Failed to load URL: " .. url)
+end
+
+
+local Rayfield
+local loadSuccess, loadError = pcall(function()
+    Rayfield = loadstring(safeHttpGet('https://sirius.menu/rayfield'))()
+end)
+
+if not loadSuccess then
+    warn("Failed to load Rayfield from sirius.menu, trying backup...")
+    
+    
+    pcall(function()
+        Rayfield = loadstring(safeHttpGet('https://raw.githubusercontent.com/shlexware/Rayfield/main/source'))()
+    end)
+    
+    if not Rayfield then
+        error("CRITICAL: Could not load Rayfield UI Library. Please check your internet connection or executor compatibility.")
+    end
+end
+
+
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
+local LocalPlayer = Players.LocalPlayer
+
+
+local Config = {
+    ESP = {
+        Killer = false,
+        Survivor = false,
+        Generator = false,
+        Gate = false,
+        Hook = false,
+        Pallet = false,
+        Window = false,
+        Pumpkin = false,
+        ClosestHook = false,
+        ShowOnlyClosestHook = false,
+        ShowDistance = true,
+        MaxDistance = 500
+    },
+    AutoFeatures = {
+        AutoGenerator = false,
+        GeneratorMode = "great",
+        AutoLeaveGenerator = false,
+        LeaveDistance = 15,
+        LeaveKeybind = Enum.KeyCode.Q,
+        AutoAttack = false,
+        AttackRange = 10
+    },
+    Teleportation = {
+        TeleportOffset = 3,
+        SafeTeleport = true,
+        TeleportDelay = 0.1
+    },
+    Performance = {
+        UpdateRate = 0.5,
+        UseDistanceCulling = true,
+        MaxESPObjects = isMobile and 50 or 100, 
+        DisableParticles = false,
+        LowerGraphics = false,
+        DisableShadows = false,
+        ReduceRenderDistance = false
+    },
+    Mobile = {
+        TouchControlsEnabled = isMobile,
+        ButtonSize = 80,
+        ButtonTransparency = 0.3,
+        AutoOptimize = true,
+        AggressiveOptimization = false
+    }
+}
+
+
+local Highlights = {}
+local BillboardGuis = {}
+local LastUpdate = 0
+local UpdateConnection = nil
+local LeaveGeneratorConnection = nil
+local AutoAttackConnection = nil
+local ClosestHookHighlight = nil
+local MobileUI = nil
+local FPSCounterEnabled = false
+local FPSCounterUI = nil
+
+
+local function notify(title, content, duration)
+    local success = pcall(function()
+        Rayfield:Notify({
+            Title = title,
+            Content = content,
+            Duration = duration or 3,
+            Image = 4483362458
+        })
+    end)
+    
+    if not success then
+        warn(string.format("[%s] %s", title, content))
+    end
+end
+
+local function safeCall(func, ...)
+    local success, result = pcall(func, ...)
+    if not success then
+        return nil
+    end
+    return result
+end
+
+local function validateInstance(instance)
+    return instance and typeof(instance) == "Instance" and instance.Parent ~= nil
+end
+
+local function isKiller()
+    return LocalPlayer.Team and LocalPlayer.Team.Name == "Killer"
+end
+
+local function isSurvivor()
+    return LocalPlayer.Team and LocalPlayer.Team.Name == "Survivors"
+end
+
+
+local function applyMobileOptimizations()
+    if not isMobile then return end
+    
+    local lighting = game:GetService("Lighting")
+    local workspace = Workspace
+    
+    safeCall(function()
+        
+        settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
+        
+        
+        lighting.GlobalShadows = false
+        lighting.FogEnd = 100
+        lighting.Brightness = 2
+        
+        
+        for _, effect in ipairs(lighting:GetChildren()) do
+            if effect:IsA("PostEffect") then
+                effect.Enabled = false
             end
         end
-    end
-end
-purgeOld()
-task.delay(0.5, purgeOld)
-task.delay(1.5, purgeOld)
-
-local Cfg = {
-    espKillers=true, espSurvivors=true,
-    espGenerators=true, espGates=true, espPallets=true, espWindows=true, espHooks=true,
-    autoSkillCheck=true,
-    skillCheckPerfect=true,  -- true = IDEAL, false = SAFE
-    nextKiller=true, killerWarn=true, fullBright=true,
-}
-
-local Colors = {
-    bg=Color3.fromRGB(14,14,20), surface=Color3.fromRGB(24,24,34),
-    surfaceL=Color3.fromRGB(38,38,52), accent=Color3.fromRGB(124,92,255),
-    accentL=Color3.fromRGB(170,140,255), text=Color3.fromRGB(240,240,250),
-    textDim=Color3.fromRGB(140,140,165), green=Color3.fromRGB(80,220,140),
-    red=Color3.fromRGB(255,93,108),
-}
-local PlayerColors = { Killer=Color3.fromRGB(255,93,108), Survivor=Color3.fromRGB(64,224,255) }
-local ObjectColors = {
-    Generator=Color3.fromRGB(150,0,200), Gate=Color3.fromRGB(255,255,255),
-    Pallet=Color3.fromRGB(74,255,181), Window=Color3.fromRGB(74,255,181),
-    Hook=Color3.fromRGB(132,255,169),
-}
-local MaskNames = {["Richard"]="Rooster",["Tony"]="Tiger",["Brandon"]="Panther",
-    ["Cobra"]="Cobra",["Richter"]="Rat",["Rabbit"]="Rabbit",["Alex"]="Chainsaw"}
-local MaskColors = {["Richard"]=Color3.fromRGB(255,0,0),["Tony"]=Color3.fromRGB(255,255,0),
-    ["Brandon"]=Color3.fromRGB(160,32,240),["Cobra"]=Color3.fromRGB(0,255,0),
-    ["Richter"]=Color3.fromRGB(0,0,0),["Rabbit"]=Color3.fromRGB(255,105,180),
-    ["Alex"]=Color3.fromRGB(255,255,255)}
-
--- ================= GUI =================
-local MenuGui = Instance.new("ScreenGui")
-MenuGui.Name="TWKS_Menu_v6"; MenuGui.ResetOnSpawn=false; MenuGui.IgnoreGuiInset=true
-MenuGui.ZIndexBehavior=Enum.ZIndexBehavior.Sibling; MenuGui.DisplayOrder=100
-pcall(function() MenuGui.Parent=CoreGui end)
-if not MenuGui.Parent then MenuGui.Parent=PlayerGui end
-
-local IndicatorGui = Instance.new("ScreenGui")
-IndicatorGui.Name="ChasedInds_v6"; IndicatorGui.IgnoreGuiInset=true
-IndicatorGui.ResetOnSpawn=false; IndicatorGui.DisplayOrder=999
-pcall(function() IndicatorGui.Parent=CoreGui end)
-if not IndicatorGui.Parent then IndicatorGui.Parent=PlayerGui end
-
-local W, H = 190, 300
-local Main = Instance.new("Frame")
-Main.Size=UDim2.fromOffset(W,H)
-Main.Position=UDim2.new(0.5,-W/2,0.5,-H/2)
-Main.BackgroundColor3=Colors.bg; Main.BorderSizePixel=0; Main.Parent=MenuGui
-Instance.new("UICorner",Main).CornerRadius=UDim.new(0,10)
-
-local uiscale = Instance.new("UIScale")
-uiscale.Scale = 0.9
-uiscale.Parent = Main
-
-local Shadow = Instance.new("Frame")
-Shadow.Size=UDim2.new(1,6,1,6); Shadow.Position=UDim2.new(0,-3,0,-3)
-Shadow.BackgroundColor3=Color3.new(0,0,0); Shadow.BackgroundTransparency=0.55
-Shadow.BorderSizePixel=0; Shadow.ZIndex=0; Shadow.Parent=Main
-Instance.new("UICorner",Shadow).CornerRadius=UDim.new(0,12)
-
-local glow = Instance.new("UIStroke")
-glow.Color=Colors.accent; glow.Thickness=1; glow.Transparency=0.6; glow.Parent=Main
-
-local Header = Instance.new("Frame")
-Header.Size=UDim2.new(1,0,0,32); Header.BackgroundColor3=Colors.surface
-Header.BorderSizePixel=0; Header.Parent=Main
-Instance.new("UICorner",Header).CornerRadius=UDim.new(0,10)
-local hg = Instance.new("UIGradient")
-hg.Color=ColorSequence.new(Colors.surface,Color3.fromRGB(50,40,80)); hg.Rotation=90; hg.Parent=Header
-local HeaderMask = Instance.new("Frame")
-HeaderMask.Size=UDim2.new(1,0,0,8); HeaderMask.Position=UDim2.new(0,0,1,-8)
-HeaderMask.BackgroundColor3=Colors.surface; HeaderMask.BorderSizePixel=0; HeaderMask.Parent=Header
-
-local Title = Instance.new("TextLabel")
-Title.Size=UDim2.new(1,-70,1,0); Title.Position=UDim2.fromOffset(10,0)
-Title.BackgroundTransparency=1; Title.Text="✦ TWKS v6"
-Title.TextColor3=Colors.text; Title.Font=Enum.Font.GothamBold; Title.TextSize=11
-Title.TextXAlignment=Enum.TextXAlignment.Left; Title.Parent=Header
-
-local MinBtn = Instance.new("TextButton")
-MinBtn.Size=UDim2.fromOffset(22,22); MinBtn.Position=UDim2.new(1,-50,0.5,-11)
-MinBtn.BackgroundColor3=Colors.surfaceL; MinBtn.Text="–"; MinBtn.TextColor3=Colors.text
-MinBtn.Font=Enum.Font.GothamBold; MinBtn.TextSize=14; MinBtn.Parent=Header
-Instance.new("UICorner",MinBtn).CornerRadius=UDim.new(0,5)
-
-local CloseBtn = Instance.new("TextButton")
-CloseBtn.Size=UDim2.fromOffset(22,22); CloseBtn.Position=UDim2.new(1,-25,0.5,-11)
-CloseBtn.BackgroundColor3=Colors.red; CloseBtn.Text="×"; CloseBtn.TextColor3=Colors.text
-CloseBtn.Font=Enum.Font.GothamBold; CloseBtn.TextSize=16; CloseBtn.Parent=Header
-Instance.new("UICorner",CloseBtn).CornerRadius=UDim.new(0,5)
-
-local TabBar = Instance.new("Frame")
-TabBar.Size=UDim2.new(1,-12,0,24); TabBar.Position=UDim2.fromOffset(6,38)
-TabBar.BackgroundColor3=Colors.surface; TabBar.BorderSizePixel=0; TabBar.Parent=Main
-Instance.new("UICorner",TabBar).CornerRadius=UDim.new(0,6)
-local tl = Instance.new("UIListLayout")
-tl.FillDirection=Enum.FillDirection.Horizontal
-tl.HorizontalAlignment=Enum.HorizontalAlignment.Center
-tl.VerticalAlignment=Enum.VerticalAlignment.Center
-tl.Padding=UDim.new(0,3); tl.Parent=TabBar
-
-local Content = Instance.new("ScrollingFrame")
-Content.Size=UDim2.new(1,-10,1,-68); Content.Position=UDim2.fromOffset(5,66)
-Content.BackgroundTransparency=1; Content.BorderSizePixel=0
-Content.ScrollBarThickness=2; Content.ScrollBarImageColor3=Colors.accent
-Content.AutomaticCanvasSize=Enum.AutomaticSize.Y
-Content.CanvasSize=UDim2.new(0,0,0,0); Content.Parent=Main
-local ll = Instance.new("UIListLayout")
-ll.Padding=UDim.new(0,4); ll.SortOrder=Enum.SortOrder.LayoutOrder; ll.Parent=Content
-local pl = Instance.new("UIPadding")
-pl.PaddingTop=UDim.new(0,2); pl.PaddingBottom=UDim.new(0,4); pl.Parent=Content
-
-local tabPages, tabButtons = {}, {}
-local function setTab(idx)
-    for i, pg in ipairs(tabPages) do pg.Visible = (i==idx) end
-    for i, b in ipairs(tabButtons) do
-        local tw=TweenInfo.new(0.16,Enum.EasingStyle.Quad)
-        TweenService:Create(b,tw,{BackgroundColor3=(i==idx) and Colors.accent or Colors.surfaceL}):Play()
-        b.TextColor3=(i==idx) and Color3.new(1,1,1) or Colors.textDim
-    end
-end
-
-local function sectionHeader(parent, text)
-    local l = Instance.new("TextLabel")
-    l.Size=UDim2.new(1,-4,0,12); l.BackgroundTransparency=1
-    l.Text="  "..text; l.TextColor3=Colors.accentL
-    l.Font=Enum.Font.GothamBold; l.TextSize=8
-    l.TextXAlignment=Enum.TextXAlignment.Left; l.Parent=parent
-    return l
-end
-
-local function createToggle(parent, label, key, accent)
-    accent = accent or Colors.accent
-    local row = Instance.new("Frame")
-    row.Size=UDim2.new(1,-4,0,28); row.BackgroundColor3=Colors.surface
-    row.BorderSizePixel=0; row.Parent=parent
-    Instance.new("UICorner",row).CornerRadius=UDim.new(0,6)
-    local stroke=Instance.new("UIStroke")
-    stroke.Color=accent; stroke.Thickness=1
-    stroke.Transparency=Cfg[key] and 0.5 or 0.85; stroke.Parent=row
-    local lbl=Instance.new("TextLabel")
-    lbl.Size=UDim2.new(1,-46,1,0); lbl.Position=UDim2.fromOffset(8,0)
-    lbl.BackgroundTransparency=1; lbl.Text=label; lbl.TextColor3=Colors.text
-    lbl.Font=Enum.Font.GothamMedium; lbl.TextSize=10
-    lbl.TextXAlignment=Enum.TextXAlignment.Left; lbl.Parent=row
-    local sw=Instance.new("Frame")
-    sw.Size=UDim2.fromOffset(30,16); sw.Position=UDim2.new(1,-38,0.5,-8)
-    sw.BackgroundColor3=Cfg[key] and accent or Colors.surfaceL
-    sw.BorderSizePixel=0; sw.Parent=row
-    Instance.new("UICorner",sw).CornerRadius=UDim.new(1,0)
-    local knob=Instance.new("Frame")
-    knob.Size=UDim2.fromOffset(12,12)
-    knob.Position=UDim2.new(0,Cfg[key] and 16 or 2,0.5,-6)
-    knob.BackgroundColor3=Color3.new(1,1,1); knob.BorderSizePixel=0; knob.Parent=sw
-    Instance.new("UICorner",knob).CornerRadius=UDim.new(1,0)
-    local click=Instance.new("TextButton")
-    click.Size=UDim2.new(1,0,1,0); click.BackgroundTransparency=1; click.Text=""
-    click.Parent=row
-    local function render()
-        local on=Cfg[key]; local tw=TweenInfo.new(0.16,Enum.EasingStyle.Quad)
-        TweenService:Create(sw,tw,{BackgroundColor3=on and accent or Colors.surfaceL}):Play()
-        TweenService:Create(knob,tw,{Position=UDim2.new(0,on and 16 or 2,0.5,-6)}):Play()
-        stroke.Transparency=on and 0.5 or 0.85
-    end
-    click.MouseButton1Click:Connect(function() Cfg[key]=not Cfg[key]; render() end)
-    return row
-end
-
--- ============= SEGMENTED CONTROL (два отдельных кликабельных режима) =============
-local function createSegmented(parent, label, key, options, colors)
-    local row = Instance.new("Frame")
-    row.Size = UDim2.new(1, -4, 0, 32)
-    row.BackgroundColor3 = Colors.surface
-    row.BorderSizePixel = 0
-    row.Parent = parent
-    Instance.new("UICorner", row).CornerRadius = UDim.new(0, 6)
-
-    local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(1, -90, 1, 0)
-    lbl.Position = UDim2.fromOffset(8, 0)
-    lbl.BackgroundTransparency = 1
-    lbl.Text = label
-    lbl.TextColor3 = Colors.text
-    lbl.Font = Enum.Font.GothamMedium
-    lbl.TextSize = 10
-    lbl.TextXAlignment = Enum.TextXAlignment.Left
-    lbl.Parent = row
-
-    -- контейнер для двух кнопок
-    local segW = 76
-    local btnW = 36
-    local segFrame = Instance.new("Frame")
-    segFrame.Size = UDim2.fromOffset(segW, 22)
-    segFrame.Position = UDim2.new(1, -segW - 4, 0.5, -11)
-    segFrame.BackgroundColor3 = Colors.surfaceL
-    segFrame.BorderSizePixel = 0
-    segFrame.Parent = row
-    Instance.new("UICorner", segFrame).CornerRadius = UDim.new(0, 5)
-
-    local buttons = {}
-    for i, opt in ipairs(options) do
-        local btn = Instance.new("TextButton")
-        btn.Size = UDim2.fromOffset(btnW, 18)
-        btn.Position = UDim2.fromOffset(2 + (i-1)*(btnW+1), 2)
-        btn.BackgroundColor3 = Colors.surfaceL
-        btn.Text = opt.name
-        btn.TextColor3 = Colors.textDim
-        btn.Font = Enum.Font.GothamBold
-        btn.TextSize = 8
-        btn.BorderSizePixel = 0
-        btn.AutoButtonColor = false
-        btn.Parent = segFrame
-        Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 4)
-        buttons[i] = btn
-    end
-
-    local function render()
-        for i, opt in ipairs(options) do
-            local active = (Cfg[key] == opt.value)
-            local tw = TweenInfo.new(0.15, Enum.EasingStyle.Quad)
-            TweenService:Create(buttons[i], tw, {
-                BackgroundColor3 = active and (colors[i] or Colors.accent) or Colors.surfaceL,
-                TextColor3 = active and Color3.new(1,1,1) or Colors.textDim,
-            }):Play()
+        
+        
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if obj:IsA("ParticleEmitter") then
+                obj.Enabled = false
+            elseif obj:IsA("Trail") then
+                obj.Enabled = false
+            elseif obj:IsA("Beam") then
+                obj.Enabled = false
+            elseif obj:IsA("Fire") or obj:IsA("Smoke") or obj:IsA("Sparkles") then
+                obj.Enabled = false
+            end
         end
-    end
-    render()
+        
+        
+        workspace.StreamingEnabled = true
+        workspace.StreamingMinRadius = 32
+        workspace.StreamingTargetRadius = 64
+        
+        
+        if workspace:FindFirstChild("Terrain") then
+            workspace.Terrain.Decoration = false
+        end
+        
+        
+        game:GetService("RunService"):Set3dRenderingEnabled(true)
+    end)
+end
 
-    for i, opt in ipairs(options) do
-        buttons[i].MouseButton1Click:Connect(function()
-            Cfg[key] = opt.value
-            render()
-            print("[TWKS] SkillCheck mode =", opt.name)
+local function applyAggressiveMobileOptimizations()
+    if not isMobile then return end
+    
+    applyMobileOptimizations()
+    
+    safeCall(function()
+        local workspace = Workspace
+        
+        
+        settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
+        settings().Rendering.MeshPartDetailLevel = Enum.MeshPartDetailLevel.Level01
+        settings().Rendering.EnableFRM = false
+        
+        
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if obj:IsA("Texture") or obj:IsA("Decal") then
+                obj.Transparency = 1
+            elseif obj:IsA("SurfaceAppearance") then
+                obj.Parent = nil
+            end
+        end
+        
+        
+        safeCall(function()
+            for _, sound in ipairs(workspace:GetDescendants()) do
+                if sound:IsA("Sound") and sound.Name ~= "Music" then
+                    sound.Volume = 0
+                end
+            end
+        end)
+        
+        
+        Config.Performance.UpdateRate = 1.0 
+        Config.Performance.MaxESPObjects = 25 
+    end)
+end
+
+local function applyPerformanceSettings()
+    local lighting = game:GetService("Lighting")
+    local workspace = Workspace
+    
+    if Config.Performance.DisableParticles then
+        safeCall(function()
+            for _, obj in ipairs(workspace:GetDescendants()) do
+                if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") then
+                    obj.Enabled = false
+                end
+            end
         end)
     end
-    return row
-end
-
-local TabDefs = { {name="PLAYERS"}, {name="OBJECTS"}, {name="UTIL"} }
-for i, t in ipairs(TabDefs) do
-    local b = Instance.new("TextButton")
-    b.Size=UDim2.new(1/#TabDefs,-3,1,-4)
-    b.BackgroundColor3=(i==1) and Colors.accent or Colors.surfaceL
-    b.Text=t.name; b.TextColor3=(i==1) and Color3.new(1,1,1) or Colors.textDim
-    b.Font=Enum.Font.GothamBold; b.TextSize=8; b.Parent=TabBar
-    Instance.new("UICorner",b).CornerRadius=UDim.new(0,4)
-    b.MouseButton1Click:Connect(function() setTab(i) end)
-    tabButtons[i]=b
-
-    local pg=Instance.new("Frame")
-    pg.Size=UDim2.new(1,0,0,0); pg.AutomaticSize=Enum.AutomaticSize.Y
-    pg.BackgroundTransparency=1; pg.Visible=(i==1); pg.Parent=Content
-    local lp2=Instance.new("UIListLayout")
-    lp2.Padding=UDim.new(0,4); lp2.SortOrder=Enum.SortOrder.LayoutOrder; lp2.Parent=pg
-    tabPages[i]=pg
-end
-
-sectionHeader(tabPages[1],"ИГРОКИ")
-createToggle(tabPages[1],"ESP Убийцы","espKillers",Colors.red)
-createToggle(tabPages[1],"ESP Выжившие","espSurvivors",PlayerColors.Survivor)
-
-sectionHeader(tabPages[2],"ОБЪЕКТЫ")
-createToggle(tabPages[2],"Генераторы","espGenerators",ObjectColors.Generator)
-createToggle(tabPages[2],"Ворота","espGates",Colors.green)
-createToggle(tabPages[2],"Поддоны","espPallets",ObjectColors.Pallet)
-createToggle(tabPages[2],"Окна","espWindows",ObjectColors.Window)
-createToggle(tabPages[2],"Крюки","espHooks",ObjectColors.Hook)
-
-sectionHeader(tabPages[3],"SKILLCHECK")
-createToggle(tabPages[3],"Auto SkillCheck","autoSkillCheck",Colors.green)
-createSegmented(tabPages[3],"Режим","skillCheckPerfect",
-    { {name="IDEAL", value=true}, {name="SAFE", value=false} },
-    { Colors.green, Colors.accentL })
-
-sectionHeader(tabPages[3],"ПРОЧЕЕ")
-createToggle(tabPages[3],"Next Killer","nextKiller",Colors.accentL)
-createToggle(tabPages[3],"Killer Warn","killerWarn",Colors.red)
-createToggle(tabPages[3],"Full Bright","fullBright",Colors.accentL)
-
--- CONTROLS
-local minimized=false
-MinBtn.MouseButton1Click:Connect(function()
-    minimized=not minimized
-    local tw=TweenInfo.new(0.18,Enum.EasingStyle.Quad)
-    TweenService:Create(Main,tw,{Size=minimized and UDim2.fromOffset(W,32) or UDim2.fromOffset(W,H)}):Play()
-    TabBar.Visible=not minimized; Content.Visible=not minimized
-    MinBtn.Text=minimized and "+" or "–"
-end)
-CloseBtn.MouseButton1Click:Connect(function() MenuGui.Enabled=false end)
-
-local dragging, dragStart, startPos
-UserInputService.InputBegan:Connect(function(input, gp)
-    if gp then return end
-    if input.UserInputType~=Enum.UserInputType.Touch and input.UserInputType~=Enum.UserInputType.MouseButton1 then return end
-    local p=input.Position; local hp,hs=Header.AbsolutePosition,Header.AbsoluteSize
-    if p.X>=hp.X and p.X<=hp.X+hs.X-55 and p.Y>=hp.Y and p.Y<=hp.Y+hs.Y then
-        dragging=true; dragStart=p; startPos=Main.Position
+    
+    if Config.Performance.LowerGraphics then
+        safeCall(function()
+            settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
+        end)
     end
-end)
-UserInputService.InputChanged:Connect(function(input)
-    if not dragging then return end
-    if input.UserInputType~=Enum.UserInputType.Touch and input.UserInputType~=Enum.UserInputType.MouseMovement then return end
-    local d=input.Position-dragStart
-    Main.Position=UDim2.new(startPos.X.Scale,startPos.X.Offset+d.X,startPos.Y.Scale,startPos.Y.Offset+d.Y)
-end)
-UserInputService.InputEnded:Connect(function(input)
-    if input.UserInputType==Enum.UserInputType.Touch or input.UserInputType==Enum.UserInputType.MouseButton1 then
-        dragging=false
+    
+    if Config.Performance.DisableShadows then
+        safeCall(function()
+            lighting.GlobalShadows = false
+            lighting.FogEnd = 100
+        end)
     end
-end)
+    
+    if Config.Performance.ReduceRenderDistance then
+        safeCall(function()
+            workspace.StreamingEnabled = true
+            workspace.StreamingMinRadius = 32
+            workspace.StreamingTargetRadius = 64
+        end)
+    end
+end
 
-Main.Size=UDim2.fromOffset(0,0)
-TweenService:Create(Main,TweenInfo.new(0.2,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{
-    Size=UDim2.fromOffset(W,H),
-}):Play()
-
--- ================= ESP HELPERS =================
-local ActiveGenerators={}
-local LastFullESPRefresh=0
-local LastUpdateTick=0
-
-local function GetGameValue(obj,name)
-    if not obj then return nil end
-    local a=obj:GetAttribute(name); if a~=nil then return a end
-    local c=obj:FindFirstChild(name)
-    if c then local s,v=pcall(function() return c.Value end); if s then return v end end
-    return nil
-end
-local function ApplyHighlight(obj,color)
-    if not obj then return end
-    local h=obj:FindFirstChild("H") or Instance.new("Highlight")
-    h.Name="H"; h.Adornee=obj; h.FillColor=color; h.OutlineColor=color
-    h.FillTransparency=0.8; h.OutlineTransparency=0.3
-    h.DepthMode=Enum.HighlightDepthMode.AlwaysOnTop; h.Parent=obj
-end
-local function RemoveHighlight(obj)
-    if not obj then return end
-    local h=obj:FindFirstChild("H"); if h then h:Destroy() end
-end
-local function CreateBillboardTag(text,color,size,textSize)
-    local b=Instance.new("BillboardGui"); b.Name="BitchHook"; b.AlwaysOnTop=true
-    b.Size=size or UDim2.new(0,120,0,30)
-    local l=Instance.new("TextLabel")
-    l.Name="BitchHook"; l.Size=UDim2.new(1,0,1,0); l.BackgroundTransparency=1
-    l.Text=text; l.TextColor3=color; l.TextStrokeTransparency=0
-    l.TextStrokeColor3=Color3.new(0,0,0); l.Font=Enum.Font.GothamBold
-    l.TextSize=textSize or 10; l.TextWrapped=true; l.RichText=true; l.Parent=b
-    return b
-end
-local function cleanupPlayerESP(player)
-    if not player.Character then return end
-    local root=player.Character:FindFirstChild("HumanoidRootPart")
-    if root then
-        for _,n in ipairs({"BitchHook","MaskHook"}) do
-            local o=root:FindFirstChild(n); if o then o:Destroy() end
+local function resetPerformanceSettings()
+    local lighting = game:GetService("Lighting")
+    local workspace = Workspace
+    
+    safeCall(function()
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") then
+                obj.Enabled = true
+            end
         end
-    end
-    RemoveHighlight(player.Character)
-    for _,n in ipairs({player.Name.."_Chased",player.Name.."_Killer"}) do
-        local o=IndicatorGui:FindFirstChild(n); if o then o:Destroy() end
+        
+        settings().Rendering.QualityLevel = Enum.QualityLevel.Automatic
+        lighting.GlobalShadows = true
+        lighting.FogEnd = 100000
+        
+        
+        for _, effect in ipairs(lighting:GetChildren()) do
+            if effect:IsA("PostEffect") then
+                effect.Enabled = true
+            end
+        end
+        
+        
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if obj:IsA("Texture") or obj:IsA("Decal") then
+                obj.Transparency = 0
+            end
+        end
+    end)
+end
+
+
+local function createMobileControls()
+    if not isMobile then return end
+    
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "MobileControls"
+    screenGui.ResetOnSpawn = false
+    screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    
+    
+    local leaveButton = Instance.new("TextButton")
+    leaveButton.Name = "LeaveGenerator"
+    leaveButton.Size = UDim2.new(0, Config.Mobile.ButtonSize, 0, Config.Mobile.ButtonSize)
+    leaveButton.Position = UDim2.new(1, -100, 0.5, -40)
+    leaveButton.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
+    leaveButton.BackgroundTransparency = Config.Mobile.ButtonTransparency
+    leaveButton.Text = "LEAVE"
+    leaveButton.TextColor3 = Color3.new(1, 1, 1)
+    leaveButton.TextScaled = true
+    leaveButton.Font = Enum.Font.GothamBold
+    leaveButton.Parent = screenGui
+    
+    local leaveCorner = Instance.new("UICorner")
+    leaveCorner.CornerRadius = UDim.new(0, 10)
+    leaveCorner.Parent = leaveButton
+    
+    leaveButton.MouseButton1Click:Connect(function()
+        leaveGenerator()
+    end)
+    
+    
+    local tpButton = Instance.new("TextButton")
+    tpButton.Name = "TeleportGen"
+    tpButton.Size = UDim2.new(0, Config.Mobile.ButtonSize, 0, Config.Mobile.ButtonSize)
+    tpButton.Position = UDim2.new(1, -100, 0.5, 60)
+    tpButton.BackgroundColor3 = Color3.fromRGB(100, 150, 255)
+    tpButton.BackgroundTransparency = Config.Mobile.ButtonTransparency
+    tpButton.Text = "TP GEN"
+    tpButton.TextColor3 = Color3.new(1, 1, 1)
+    tpButton.TextScaled = true
+    tpButton.Font = Enum.Font.GothamBold
+    tpButton.Parent = screenGui
+    
+    local tpCorner = Instance.new("UICorner")
+    tpCorner.CornerRadius = UDim.new(0, 10)
+    tpCorner.Parent = tpButton
+    
+    tpButton.MouseButton1Click:Connect(function()
+        local generators = getGeneratorsByDistance()
+        if #generators > 0 then
+            safeTeleport(generators[1].part.CFrame)
+            notify("Teleported!", "Moved to closest generator", 2)
+        end
+    end)
+    
+    
+    local success = pcall(function()
+        screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+    end)
+    
+    if success then
+        notify("Mobile Controls", "Touch controls enabled!", 3)
+        MobileUI = screenGui
     end
 end
 
-local function updatePlayerNametag(player)
-    if not player.Character then cleanupPlayerESP(player); return end
-    local rootPart=player.Character:FindFirstChild("HumanoidRootPart")
-    local humanoid=player.Character:FindFirstChildOfClass("Humanoid")
-    if not rootPart then return end
-    local teamName=(player.Team and player.Team.Name:lower()) or ""
-    local isKiller=teamName:find("killer")~=nil
-    local selectedKiller=GetGameValue(player,"SelectedKiller")
-    local rawMask=GetGameValue(player,"Mask") or GetGameValue(player.Character,"Mask")
-    local isKnocked=GetGameValue(player.Character,"Knocked")
-    local isHooked=GetGameValue(player.Character,"IsHooked")
-    local isChased=GetGameValue(player.Character,"IsChased")
-    local color=isKiller and PlayerColors.Killer or PlayerColors.Survivor
-    if isHooked then color=Color3.fromRGB(255,182,193)
-    elseif humanoid and humanoid.Health<humanoid.MaxHealth then
-        color=isKnocked and Color3.fromRGB(200,100,0) or Color3.fromRGB(200,200,0)
-    end
-    local distance=0
-    if LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") then
-        distance=math.floor((rootPart.Position-LP.Character.HumanoidRootPart.Position).Magnitude)
-    end
-    local baseName=(isKiller and selectedKiller and tostring(selectedKiller)~="")
-        and tostring(selectedKiller) or player.Name
-    local billboard=rootPart:FindFirstChild("BitchHook")
-    local nameText=baseName.."\n["..distance.." studs]"
-    if not billboard then
-        billboard=CreateBillboardTag(nameText,color); billboard.Adornee=rootPart; billboard.Parent=rootPart
-    else
-        local lbl=billboard:FindFirstChild("BitchHook") or billboard:FindFirstChildOfClass("TextLabel")
-        if lbl then lbl.Text=nameText; lbl.TextColor3=color end
-    end
-    ApplyHighlight(player.Character,color)
-    local hasMask=false
-    if isKiller and string.match(tostring(selectedKiller):lower(),"masked") and rawMask then
-        local sm=tostring(rawMask):lower()
-        for key,name in pairs(MaskNames) do
-            if key:lower()==sm then
-                hasMask=true
-                local mb=rootPart:FindFirstChild("MaskHook")
-                if not mb then
-                    mb=CreateBillboardTag(name,MaskColors[key] or Color3.new(1,1,1),UDim2.new(0,100,0,20),12)
-                    mb.Name="MaskHook"; mb.StudsOffset=Vector3.new(0,3,0)
-                    mb.Adornee=rootPart; mb.Parent=rootPart
-                else
-                    local lbl=mb:FindFirstChild("BitchHook") or mb:FindFirstChildOfClass("TextLabel")
-                    if lbl then lbl.Text=name; lbl.TextColor3=MaskColors[key] or Color3.new(1,1,1) end
+
+local function createFPSCounter()
+    if FPSCounterUI then return end
+    
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "FPSCounter"
+    screenGui.ResetOnSpawn = false
+    screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    
+    local frame = Instance.new("Frame")
+    frame.Name = "FPSFrame"
+    frame.Size = UDim2.new(0, 120, 0, 50)
+    frame.Position = UDim2.new(0, 10, 0, 10)
+    frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    frame.BackgroundTransparency = 0.3
+    frame.BorderSizePixel = 0
+    frame.Parent = screenGui
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 8)
+    corner.Parent = frame
+    
+    local fpsLabel = Instance.new("TextLabel")
+    fpsLabel.Name = "FPSLabel"
+    fpsLabel.Size = UDim2.new(1, 0, 1, 0)
+    fpsLabel.BackgroundTransparency = 1
+    fpsLabel.Text = "FPS: 0"
+    fpsLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
+    fpsLabel.TextStrokeTransparency = 0
+    fpsLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
+    fpsLabel.Font = Enum.Font.GothamBold
+    fpsLabel.TextSize = 18
+    fpsLabel.Parent = frame
+    
+    
+    local dragging = false
+    local dragInput, mousePos, framePos
+    
+    frame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            mousePos = input.Position
+            framePos = frame.Position
+            
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
                 end
-                break
+            end)
+        end
+    end)
+    
+    frame.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+            dragInput = input
+        end
+    end)
+    
+    UserInputService.InputChanged:Connect(function(input)
+        if input == dragInput and dragging then
+            local delta = input.Position - mousePos
+            frame.Position = UDim2.new(
+                framePos.X.Scale,
+                framePos.X.Offset + delta.X,
+                framePos.Y.Scale,
+                framePos.Y.Offset + delta.Y
+            )
+        end
+    end)
+    
+    
+    local lastTime = tick()
+    local frameCount = 0
+    local fps = 0
+    
+    RunService.Heartbeat:Connect(function()
+        if not FPSCounterEnabled then return end
+        
+        frameCount = frameCount + 1
+        local currentTime = tick()
+        local deltaTime = currentTime - lastTime
+        
+        
+        if deltaTime >= 1.5 then
+            fps = math.floor(frameCount / deltaTime)
+            frameCount = 0
+            lastTime = currentTime
+            
+            
+            if fps >= 60 then
+                fpsLabel.TextColor3 = Color3.fromRGB(0, 255, 0) 
+            elseif fps >= 30 then
+                fpsLabel.TextColor3 = Color3.fromRGB(255, 255, 0) 
+            else
+                fpsLabel.TextColor3 = Color3.fromRGB(255, 0, 0) 
+            end
+            
+            fpsLabel.Text = string.format("FPS: %d", fps)
+        end
+    end)
+    
+    local success = pcall(function()
+        screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+    end)
+    
+    if success then
+        FPSCounterUI = screenGui
+        FPSCounterEnabled = true
+        notify("FPS Counter", "Enabled - Drag to move!", 3)
+    end
+end
+
+local function removeFPSCounter()
+    if FPSCounterUI then
+        FPSCounterUI:Destroy()
+        FPSCounterUI = nil
+        FPSCounterEnabled = false
+    end
+end
+
+
+local function getCharacterRootPart()
+    if not LocalPlayer.Character then return nil end
+    return LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+end
+
+local function isNearGenerator()
+    local hrp = getCharacterRootPart()
+    if not hrp then return false, nil end
+    
+    local map = Workspace:FindFirstChild("Map")
+    if not map then return false, nil end
+    
+    local nearestGen = nil
+    local nearestDist = math.huge
+    
+    for _, obj in ipairs(map:GetDescendants()) do
+        if obj:IsA("Model") and obj.Name == "Generator" then
+            local genPart = obj:FindFirstChildWhichIsA("BasePart")
+            if genPart then
+                local distance = (genPart.Position - hrp.Position).Magnitude
+                if distance < nearestDist then
+                    nearestDist = distance
+                    nearestGen = obj
+                end
             end
         end
     end
-    if not hasMask then
-        local mb=rootPart:FindFirstChild("MaskHook"); if mb then mb:Destroy() end
+    
+    if nearestGen and nearestDist <= Config.AutoFeatures.LeaveDistance then
+        return true, nearestGen, nearestDist
     end
-    local chased2D=IndicatorGui:FindFirstChild(player.Name.."_Chased")
-    if isChased then
-        if not chased2D then
-            chased2D=Instance.new("TextLabel",IndicatorGui)
-            chased2D.Name=player.Name.."_Chased"; chased2D.BackgroundTransparency=1
-            chased2D.Font=Enum.Font.GothamBold; chased2D.TextSize=24
-            chased2D.TextStrokeTransparency=0; chased2D.AnchorPoint=Vector2.new(0.5,0.5)
-        end
-        chased2D.Text,chased2D.TextColor3="!!",color
-        local sp,onS=Camera:WorldToScreenPoint(rootPart.Position)
-        if onS then chased2D.Visible=false
-        else
-            chased2D.Visible=true
-            local c=Camera.ViewportSize/2
-            local d=Vector2.new(sp.X,sp.Y)-c
-            if sp.Z<0 then d=-d end
-            local sc=math.max(math.abs(d.X)/(c.X-30),math.abs(d.Y)/(c.Y-30))
-            chased2D.Position=UDim2.new(0,c.X+d.X/(sc==0 and 1 or sc),0,c.Y+d.Y/(sc==0 and 1 or sc))
-        end
-    elseif chased2D then chased2D:Destroy() end
-    local killer2D=IndicatorGui:FindFirstChild(player.Name.."_Killer")
-    if isKiller then
-        if not killer2D then
-            killer2D=Instance.new("TextLabel",IndicatorGui)
-            killer2D.Name=player.Name.."_Killer"; killer2D.BackgroundTransparency=1
-            killer2D.Font=Enum.Font.GothamBold; killer2D.TextSize=11
-            killer2D.TextStrokeTransparency=0
-            killer2D.Size=UDim2.new(0,120,0,30); killer2D.RichText=true
-            killer2D.AnchorPoint=Vector2.new(0.5,0.5)
-        end
-        killer2D.Text=baseName.."\n["..distance.." studs]"
-        killer2D.TextColor3=color
-        local sp,onS=Camera:WorldToScreenPoint(rootPart.Position)
-        if not onS then
-            killer2D.Visible=true
-            local c=Camera.ViewportSize/2
-            local d=Vector2.new(sp.X,sp.Y)-c
-            if sp.Z<0 then d=-d end
-            local sc=math.max(math.abs(d.X)/(c.X-30),math.abs(d.Y)/(c.Y-30))
-            killer2D.Position=UDim2.new(0,c.X+d.X/(sc==0 and 1 or sc),0,c.Y+d.Y/(sc==0 and 1 or sc))
-        else killer2D.Visible=false end
-    elseif killer2D then killer2D:Destroy() end
+    
+    return false, nil, nil
 end
 
-local function updateGeneratorProgress(gen)
-    if not gen or not gen.Parent then return true end
-    local pct=GetGameValue(gen,"RepairProgress") or GetGameValue(gen,"Progress") or 0
-    local bb=gen:FindFirstChild("GenBitchHook")
-    if pct>=100 then
-        if bb then bb:Destroy() end; RemoveHighlight(gen); return true
+function leaveGenerator()
+    local hrp = getCharacterRootPart()
+    if not hrp then return false end
+    
+    local isNear, nearestGen, distance = isNearGenerator()
+    if not isNear then
+        notify("Not Near", "You're not near any generator", 2)
+        return false
     end
-    local cp=math.clamp(pct,0,100)
-    local finalColor=cp<50 and ObjectColors.Generator:Lerp(Color3.fromRGB(180,180,0),cp/50)
-        or Color3.fromRGB(180,180,0):Lerp(Color3.fromRGB(0,150,0),(cp-50)/50)
-    local str=string.format("[%.2f%%]",pct)
-    if not bb then
-        bb=CreateBillboardTag(str,finalColor); bb.Name="GenBitchHook"
-        bb.StudsOffset=Vector3.new(0,2,0)
-        bb.Adornee=gen:FindFirstChild("defaultMaterial",true) or gen; bb.Parent=gen
-    else
-        local lbl=bb:FindFirstChild("BitchHook") or bb:FindFirstChildOfClass("TextLabel")
-        if lbl then lbl.Text=str; lbl.TextColor3=finalColor end
+    
+    local genPart = nearestGen:FindFirstChildWhichIsA("BasePart")
+    if genPart then
+        local direction = (hrp.Position - genPart.Position).Unit
+        local escapeDistance = Config.AutoFeatures.LeaveDistance + 15
+        local escapePosition = hrp.Position + (direction * escapeDistance)
+        local escapeCFrame = CFrame.new(escapePosition, escapePosition + hrp.CFrame.LookVector)
+        
+        if safeTeleport(escapeCFrame, Vector3.new(0, 2, 0)) then
+            notify("Escaped!", string.format("Moved %.0f studs away", escapeDistance), 2)
+            return true
+        end
     end
+    
     return false
 end
 
-local function RefreshESP()
-    ActiveGenerators={}
-    for _,obj in ipairs(workspace:GetDescendants()) do
-        if obj.Name=="Window" then
-            if Cfg.espWindows then ApplyHighlight(obj,ObjectColors.Window)
-            else RemoveHighlight(obj) end
+local function startAutoLeaveGenerator()
+    if LeaveGeneratorConnection then return end
+    
+    if not isMobile then
+        LeaveGeneratorConnection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+            if gameProcessed then return end
+            
+            if input.KeyCode == Config.AutoFeatures.LeaveKeybind then
+                leaveGenerator()
+            end
+        end)
+        
+        notify("Auto Leave Enabled", string.format("Press %s to leave generator", Config.AutoFeatures.LeaveKeybind.Name), 3)
+    else
+        notify("Mobile Mode", "Use the LEAVE button to escape generators", 3)
+    end
+end
+
+local function stopAutoLeaveGenerator()
+    if LeaveGeneratorConnection then
+        LeaveGeneratorConnection:Disconnect()
+        LeaveGeneratorConnection = nil
+    end
+    notify("Auto Leave Disabled", "Keybind disabled", 2)
+end
+
+
+local function findClosestSurvivor()
+    if not isKiller() then return nil, nil end
+    
+    local hrp = getCharacterRootPart()
+    if not hrp then return nil, nil end
+    
+    local closestPlayer = nil
+    local closestDist = math.huge
+    
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Team and player.Team.Name == "Survivors" and player.Character then
+            local targetHRP = player.Character:FindFirstChild("HumanoidRootPart")
+            if targetHRP then
+                local dist = (targetHRP.Position - hrp.Position).Magnitude
+                if dist < closestDist and dist <= Config.AutoFeatures.AttackRange then
+                    closestDist = dist
+                    closestPlayer = player
+                end
+            end
         end
     end
-    local Map=workspace:FindFirstChild("Map"); if not Map then return end
-    for _,obj in ipairs(Map:GetDescendants()) do
-        if obj.Name=="Generator" then
-            if Cfg.espGenerators then
-                ApplyHighlight(obj,ObjectColors.Generator); table.insert(ActiveGenerators,obj)
+    
+    return closestPlayer, closestDist
+end
+
+local function performAutoAttack()
+    if not isKiller() then return end
+    
+    local target, distance = findClosestSurvivor()
+    if not target then return end
+    
+    safeCall(function()
+        local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+        if remotes then
+            local attacks = remotes:FindFirstChild("Attacks")
+            if attacks then
+                local basicAttack = attacks:FindFirstChild("BasicAttack")
+                if basicAttack then
+                    basicAttack:FireServer(false)
+                end
+            end
+        end
+    end)
+end
+
+local function startAutoAttack()
+    if AutoAttackConnection then return end
+    
+    if not isKiller() then
+        notify("Error", "You must be the Killer to use Auto Attack!", 3)
+        return
+    end
+    
+    AutoAttackConnection = RunService.Heartbeat:Connect(function()
+        if Config.AutoFeatures.AutoAttack then
+            performAutoAttack()
+        end
+    end)
+    
+    notify("Auto Attack Enabled", string.format("Range: %d studs", Config.AutoFeatures.AttackRange), 3)
+end
+
+local function stopAutoAttack()
+    if AutoAttackConnection then
+        AutoAttackConnection:Disconnect()
+        AutoAttackConnection = nil
+    end
+    notify("Auto Attack Disabled", "Auto attack stopped", 2)
+end
+
+local function getAllGenerators()
+    local generators = {}
+    local map = Workspace:FindFirstChild("Map")
+    if not map then return generators end
+    
+    for _, obj in ipairs(map:GetDescendants()) do
+        if obj:IsA("Model") and obj.Name == "Generator" then
+            local genPart = obj:FindFirstChildWhichIsA("BasePart")
+            if genPart then
+                table.insert(generators, {
+                    model = obj,
+                    part = genPart,
+                    position = genPart.Position
+                })
+            end
+        end
+    end
+    
+    return generators
+end
+
+function getGeneratorsByDistance()
+    local hrp = getCharacterRootPart()
+    if not hrp then return {} end
+    
+    local generators = getAllGenerators()
+    
+    for _, gen in ipairs(generators) do
+        gen.distance = (gen.position - hrp.Position).Magnitude
+    end
+    
+    table.sort(generators, function(a, b)
+        return a.distance < b.distance
+    end)
+    
+    return generators
+end
+
+function safeTeleport(targetCFrame, offset)
+    local hrp = getCharacterRootPart()
+    if not hrp then 
+        notify("Error", "Character not found", 3)
+        return false
+    end
+    
+    offset = offset or Vector3.new(0, Config.Teleportation.TeleportOffset, 0)
+    
+    if Config.Teleportation.SafeTeleport then
+        safeCall(function()
+            for _, part in ipairs(LocalPlayer.Character:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    part.CanCollide = false
+                end
+            end
+        end)
+    end
+    
+    hrp.CFrame = targetCFrame + offset
+    
+    if Config.Teleportation.SafeTeleport then
+        task.delay(0.5, function()
+            safeCall(function()
+                for _, part in ipairs(LocalPlayer.Character:GetDescendants()) do
+                    if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+                        part.CanCollide = true
+                    end
+                end
+            end)
+        end)
+    end
+    
+    return true
+end
+
+
+local function createHighlight(obj, color)
+    if not validateInstance(obj) then return end
+    if obj:FindFirstChild("H") then return end
+    
+    safeCall(function()
+        local h = Instance.new("Highlight")
+        h.Name = "H"
+        h.Adornee = obj
+        h.FillColor = color
+        h.OutlineColor = color
+        h.FillTransparency = 0.5
+        h.OutlineTransparency = 0
+        h.Parent = obj
+        Highlights[obj] = h
+    end)
+end
+
+local function removeHighlight(obj)
+    if Highlights[obj] then
+        safeCall(function()
+            if validateInstance(Highlights[obj]) then
+                Highlights[obj]:Destroy()
+            end
+        end)
+        Highlights[obj] = nil
+    end
+    
+    local existingH = obj:FindFirstChild("H")
+    if existingH then
+        existingH:Destroy()
+    end
+end
+
+local function createLabel(obj, text, color)
+    if not validateInstance(obj) then return end
+    if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then return end
+    
+    local rootPart = obj:IsA("Model") and obj:FindFirstChildWhichIsA("BasePart") or (obj:IsA("BasePart") and obj or nil)
+    if not rootPart then return end
+    
+    local playerRoot = LocalPlayer.Character.HumanoidRootPart
+    local distance = (playerRoot.Position - rootPart.Position).Magnitude
+    
+    if Config.Performance.UseDistanceCulling and distance > Config.ESP.MaxDistance then
+        if BillboardGuis[obj] then
+            safeCall(function()
+                if validateInstance(BillboardGuis[obj]) then
+                    BillboardGuis[obj]:Destroy()
+                end
+            end)
+            BillboardGuis[obj] = nil
+        end
+        return
+    end
+    
+    if BillboardGuis[obj] and validateInstance(BillboardGuis[obj]) then
+        local textLabel = BillboardGuis[obj]:FindFirstChild("TextLabel")
+        if textLabel and Config.ESP.ShowDistance then
+            textLabel.Text = string.format("%s\n%.0fm", text, distance)
+        elseif textLabel then
+            textLabel.Text = text
+        end
+        return
+    end
+    
+    safeCall(function()
+        local billboard = Instance.new("BillboardGui")
+        billboard.Size = UDim2.new(0, 200, 0, 50)
+        billboard.AlwaysOnTop = true
+        billboard.StudsOffset = Vector3.new(0, 3, 0)
+        billboard.Adornee = rootPart
+        billboard.Parent = obj
+        
+        local textLabel = Instance.new("TextLabel")
+        textLabel.Size = UDim2.new(1, 0, 1, 0)
+        textLabel.BackgroundTransparency = 1
+        textLabel.TextColor3 = color
+        textLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
+        textLabel.TextStrokeTransparency = 0
+        textLabel.Font = Enum.Font.GothamBold
+        textLabel.TextScaled = true
+        textLabel.Text = Config.ESP.ShowDistance and string.format("%s\n%.0fm", text, distance) or text
+        textLabel.Parent = billboard
+        
+        BillboardGuis[obj] = billboard
+    end)
+end
+
+local function removeLabel(obj)
+    if BillboardGuis[obj] then
+        safeCall(function()
+            if validateInstance(BillboardGuis[obj]) then
+                BillboardGuis[obj]:Destroy()
+            end
+        end)
+        BillboardGuis[obj] = nil
+    end
+end
+
+local function clearAllESP()
+    for obj, h in pairs(Highlights) do
+        removeHighlight(obj)
+    end
+    for obj, gui in pairs(BillboardGuis) do
+        removeLabel(obj)
+    end
+    Highlights = {}
+    BillboardGuis = {}
+end
+
+
+local function updatePlayerESP()
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character and player.Team then
+            local teamName = player.Team.Name
+            
+            if teamName == "Killer" and Config.ESP.Killer then
+                createHighlight(player.Character, Color3.fromRGB(255, 0, 0))
+                createLabel(player.Character, player.Name .. "\n[KILLER]", Color3.fromRGB(255, 0, 0))
+            elseif teamName == "Survivors" and Config.ESP.Survivor then
+                createHighlight(player.Character, Color3.fromRGB(0, 255, 0))
+                createLabel(player.Character, player.Name .. "\n[SURVIVOR]", Color3.fromRGB(0, 255, 0))
             else
-                RemoveHighlight(obj)
-                local bb=obj:FindFirstChild("GenBitchHook"); if bb then bb:Destroy() end
-            end
-        elseif obj.Name=="Hook" then
-            local m=obj:FindFirstChild("Model")
-            if m then for _,p in ipairs(m:GetDescendants()) do
-                if p:IsA("MeshPart") then
-                    if Cfg.espHooks then ApplyHighlight(p,ObjectColors.Hook)
-                    else RemoveHighlight(p) end
-                end
-            end end
-        elseif obj.Name=="Palletwrong" or obj.Name=="Pallet" then
-            if Cfg.espPallets then ApplyHighlight(obj,ObjectColors.Pallet)
-            else RemoveHighlight(obj) end
-        elseif obj.Name=="Gate" then
-            if Cfg.espGates then ApplyHighlight(obj,ObjectColors.Gate)
-            else RemoveHighlight(obj) end
-        end
-    end
-end
-
-local function updateNextKillerDisplay()
-    if not IndicatorGui then return end
-    local label=IndicatorGui:FindFirstChild("NextKillerDisplay")
-    local team=(LP.Team and LP.Team.Name:lower()) or ""
-    if not Cfg.nextKiller or not (team:find("spectator") or team:find("lobby")) then
-        if label then label:Destroy() end; return
-    end
-    if not label then
-        label=Instance.new("TextLabel",IndicatorGui)
-        label.Name="NextKillerDisplay"; label.Size=UDim2.new(0,240,0,30)
-        label.Position=UDim2.new(0.5,0,0,45)
-        label.AnchorPoint=Vector2.new(0.5,0); label.BackgroundTransparency=0.5
-        label.BackgroundColor3=Color3.new(0,0,0); label.TextColor3=Color3.new(1,1,1)
-        label.Font=Enum.Font.GothamBold; label.TextSize=14; label.RichText=true
-    end
-    local list=Players:GetPlayers()
-    table.sort(list,function(a,b)
-        local aA=GetGameValue(a,"AllowKiller") or false
-        local bA=GetGameValue(b,"AllowKiller") or false
-        if aA~=bA then return aA end
-        return (GetGameValue(a,"KillerChance") or 0)>(GetGameValue(b,"KillerChance") or 0)
-    end)
-    local nk=list[1]
-    if nk then
-        label.Text="Next Killer: <font color=\"rgb(255,93,108)\">"
-            ..(nk==LP and "YOU" or tostring(GetGameValue(nk,"SelectedKiller") or nk.Name)).."</font>"
-    end
-end
-
--- ================= AUTO SKILLCHECK =================
-local TouchID=8822
-local ActionPath="Survivor-mob.Controls.action.check"
-local HBConn,VisConn
-
-local function GetActionTarget()
-    local cur=PlayerGui
-    for seg in string.gmatch(ActionPath,"[^%.]+") do cur=cur and cur:FindFirstChild(seg) end
-    return cur
-end
-local function TriggerMobileButton()
-    local b=GetActionTarget()
-    if b and b:IsA("GuiObject") then
-        local p,s,i=b.AbsolutePosition,b.AbsoluteSize,GuiService:GetGuiInset()
-        local cx,cy=p.X+s.X/2+i.X,p.Y+s.Y/2+i.Y
-        pcall(function()
-            VirtualInputManager:SendTouchEvent(TouchID,0,cx,cy)
-            task.wait(0.01)
-            VirtualInputManager:SendTouchEvent(TouchID,2,cx,cy)
-        end)
-    end
-end
-local function InitializeAutoSkillCheck()
-    task.spawn(function()
-        local prompt=PlayerGui:WaitForChild("SkillCheckPromptGui",10)
-        local check=prompt and prompt:WaitForChild("Check",10)
-        if not check then return end
-        local line,goal=check:WaitForChild("Line"),check:WaitForChild("Goal")
-        if VisConn then VisConn:Disconnect() end
-        VisConn=check:GetPropertyChangedSignal("Visible"):Connect(function()
-            if not Cfg.autoSkillCheck then return end
-            if LP.Team and LP.Team.Name=="Survivors" and check.Visible then
-                if HBConn then HBConn:Disconnect() end
-                HBConn=RunService.Heartbeat:Connect(function()
-                    if not Cfg.autoSkillCheck then
-                        if HBConn then HBConn:Disconnect(); HBConn=nil end; return
-                    end
-                    local lr,gr=line.Rotation%360,goal.Rotation%360
-                    local ss,se
-                    if Cfg.skillCheckPerfect then
-                        -- IDEAL: строго в perfect-зону (14°)
-                        ss,se = (gr+101)%360, (gr+115)%360
-                    else
-                        -- SAFE: расширенное окно (30°) — страхует от лагов
-                        ss,se = (gr+95)%360, (gr+125)%360
-                    end
-                    if (ss>se and (lr>=ss or lr<=se)) or (lr>=ss and lr<=se) then
-                        TriggerMobileButton()
-                        if HBConn then HBConn:Disconnect(); HBConn=nil end
-                    end
-                end)
-            elseif HBConn then HBConn:Disconnect(); HBConn=nil end
-        end)
-    end)
-end
-
-workspace.ChildAdded:Connect(function(c)
-    if c.Name=="Map" then task.wait(1); RefreshESP() end
-end)
-LP.CharacterAdded:Connect(function()
-    if HBConn then HBConn:Disconnect(); HBConn=nil end
-    if VisConn then VisConn:Disconnect(); VisConn=nil end
-    task.wait(1); InitializeAutoSkillCheck()
-end)
-
-local function clearKillerWarn()
-    local root=LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
-    if root then local w=root:FindFirstChild("KillerWarn"); if w then w:Destroy() end end
-end
-
-RunService.Heartbeat:Connect(function()
-    local now=tick()
-    if now-LastUpdateTick<0.05 then return end
-    LastUpdateTick=now
-
-    if Cfg.fullBright then
-        Lighting.Ambient=Color3.fromRGB(255,255,255)
-        Lighting.OutdoorAmbient=Color3.fromRGB(255,255,255)
-        Lighting.Brightness=2; Lighting.ClockTime=14
-        Lighting.GlobalShadows=false; Lighting.FogEnd=9e9
-    end
-    if now-LastFullESPRefresh>5 then LastFullESPRefresh=now; RefreshESP() end
-    updateNextKillerDisplay()
-
-    local myRoot=LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
-    local killerNearby=false
-    for _,p in ipairs(Players:GetPlayers()) do
-        if p~=LP then
-            local t=(p.Team and p.Team.Name:lower()) or ""
-            local isKiller=t:find("killer")~=nil
-            local shouldESP=(isKiller and Cfg.espKillers) or (not isKiller and Cfg.espSurvivors)
-            if shouldESP then updatePlayerNametag(p) else cleanupPlayerESP(p) end
-            if Cfg.killerWarn and isKiller and myRoot and p.Character
-                and p.Character:FindFirstChild("HumanoidRootPart") then
-                if (p.Character.HumanoidRootPart.Position-myRoot.Position).Magnitude<99 then
-                    killerNearby=true
-                end
+                removeHighlight(player.Character)
+                removeLabel(player.Character)
             end
         end
     end
+end
 
-    if Cfg.killerWarn and myRoot then
-        local warn=myRoot:FindFirstChild("KillerWarn")
-        if killerNearby then
-            if not warn then
-                warn=CreateBillboardTag("!",Colors.red,UDim2.new(0,50,0,50),40)
-                warn.Name="KillerWarn"; warn.StudsOffset=Vector3.new(0,4,0)
-                warn.Adornee=myRoot; warn.Parent=myRoot
+local function updateGeneratorESP()
+    if not Config.ESP.Generator then return end
+    
+    safeCall(function()
+        local map = Workspace:FindFirstChild("Map")
+        if not map then return end
+        
+        for _, obj in ipairs(map:GetDescendants()) do
+            if obj:IsA("Model") and obj.Name == "Generator" then
+                createHighlight(obj, Color3.fromRGB(203, 132, 66))
+                createLabel(obj, "Generator", Color3.fromRGB(203, 132, 66))
             end
-        elseif warn then warn:Destroy() end
-    elseif not Cfg.killerWarn then clearKillerWarn() end
+        end
+    end)
+end
 
-    for i=#ActiveGenerators,1,-1 do
-        local g=ActiveGenerators[i]
-        if g and g.Parent and Cfg.espGenerators then
-            if updateGeneratorProgress(g) then table.remove(ActiveGenerators,i) end
-        else table.remove(ActiveGenerators,i) end
+local function updateGateESP()
+    if not Config.ESP.Gate then return end
+    
+    safeCall(function()
+        local map = Workspace:FindFirstChild("Map")
+        if not map then return end
+        
+        for _, obj in ipairs(map:GetDescendants()) do
+            if obj:IsA("Model") and obj.Name == "Gate" then
+                createHighlight(obj, Color3.fromRGB(255, 255, 255))
+                createLabel(obj, "Gate", Color3.fromRGB(255, 255, 255))
+            end
+        end
+    end)
+end
+
+local function updateHookESP()
+    if not Config.ESP.Hook then return end
+    
+    safeCall(function()
+        local map = Workspace:FindFirstChild("Map")
+        if not map then return end
+        
+        if Config.ESP.ShowOnlyClosestHook then
+            local hrp = getCharacterRootPart()
+            if not hrp then return end
+            
+            local closestHook = nil
+            local closestDist = math.huge
+            
+            for _, obj in ipairs(map:GetDescendants()) do
+                if obj:IsA("Model") and obj.Name == "Hook" then
+                    local hookPart = obj:FindFirstChildWhichIsA("BasePart")
+                    if hookPart then
+                        local dist = (hookPart.Position - hrp.Position).Magnitude
+                        if dist < closestDist then
+                            closestDist = dist
+                            closestHook = obj
+                        end
+                    end
+                end
+            end
+            
+            for _, obj in ipairs(map:GetDescendants()) do
+                if obj:IsA("Model") and obj.Name == "Hook" then
+                    removeHighlight(obj)
+                    removeLabel(obj)
+                end
+            end
+            
+            if closestHook then
+                if closestHook:FindFirstChild("Model") then
+                    for _, part in ipairs(closestHook.Model:GetDescendants()) do
+                        if part:IsA("MeshPart") then
+                            createHighlight(part, Color3.fromRGB(255, 255, 0))
+                        end
+                    end
+                end
+                createLabel(closestHook, "CLOSEST HOOK", Color3.fromRGB(255, 255, 0))
+            end
+        else
+            for _, obj in ipairs(map:GetDescendants()) do
+                if obj:IsA("Model") and obj.Name == "Hook" then
+                    if obj:FindFirstChild("Model") then
+                        for _, part in ipairs(obj.Model:GetDescendants()) do
+                            if part:IsA("MeshPart") then
+                                createHighlight(part, Color3.fromRGB(255, 0, 0))
+                            end
+                        end
+                    end
+                    createLabel(obj, "Hook", Color3.fromRGB(255, 0, 0))
+                end
+            end
+        end
+    end)
+end
+
+local function updatePalletESP()
+    if not Config.ESP.Pallet then return end
+    
+    safeCall(function()
+        local map = Workspace:FindFirstChild("Map")
+        if not map then return end
+        
+        for _, obj in ipairs(map:GetDescendants()) do
+            if obj:IsA("Model") and obj.Name == "Palletwrong" then
+                createHighlight(obj, Color3.fromRGB(255, 255, 0))
+                createLabel(obj, "Pallet", Color3.fromRGB(255, 255, 0))
+            end
+        end
+    end)
+end
+
+local function updateWindowESP()
+    if not Config.ESP.Window then return end
+    
+    safeCall(function()
+        for _, obj in ipairs(Workspace:GetDescendants()) do
+            if obj:IsA("Model") and obj.Name == "Window" then
+                createHighlight(obj, Color3.fromRGB(173, 216, 230))
+                createLabel(obj, "Window", Color3.fromRGB(173, 216, 230))
+            end
+        end
+    end)
+end
+
+local function updatePumpkinESP()
+    if not Config.ESP.Pumpkin then return end
+    
+    safeCall(function()
+        local map = Workspace:FindFirstChild("Map")
+        if not map then return end
+        
+        local pumpkins = map:FindFirstChild("Pumpkins")
+        if not pumpkins then return end
+        
+        for _, obj in ipairs(pumpkins:GetDescendants()) do
+            if obj:IsA("Model") and obj.Name:find("Pumpkin") then
+                createHighlight(obj, Color3.fromRGB(255, 140, 0))
+                createLabel(obj, "Pumpkin", Color3.fromRGB(255, 140, 0))
+            end
+        end
+    end)
+end
+
+local function updateAllESP()
+    local currentTime = tick()
+    if currentTime - LastUpdate < Config.Performance.UpdateRate then return end
+    LastUpdate = currentTime
+    
+    local espCount = 0
+    local maxObjects = Config.Performance.MaxESPObjects
+    
+    for obj, h in pairs(Highlights) do
+        if not validateInstance(obj) or not validateInstance(h) then
+            Highlights[obj] = nil
+        else
+            espCount = espCount + 1
+        end
+    end
+    
+    for obj, gui in pairs(BillboardGuis) do
+        if not validateInstance(obj) or not validateInstance(gui) then
+            BillboardGuis[obj] = nil
+        end
+    end
+    
+    if espCount >= maxObjects then
+        return
+    end
+    
+    updatePlayerESP()
+    updateGeneratorESP()
+    updateGateESP()
+    updateHookESP()
+    updatePalletESP()
+    updateWindowESP()
+    updatePumpkinESP()
+end
+
+local function startESP()
+    if UpdateConnection then return end
+    UpdateConnection = RunService.Heartbeat:Connect(updateAllESP)
+    notify("ESP Started", "All ESP features activated", 2)
+end
+
+local function stopESP()
+    if UpdateConnection then
+        UpdateConnection:Disconnect()
+        UpdateConnection = nil
+    end
+    clearAllESP()
+    notify("ESP Stopped", "All ESP disabled", 2)
+end
+
+
+local Window = Rayfield:CreateWindow({
+    Name = "🎮 Golds Easy Hub - Violence District v2.2",
+    LoadingTitle = "Loading Mobile-Compatible Script",
+    LoadingSubtitle = "by goldgoldgoldblazn | " .. (isMobile and "Mobile Mode" or "PC Mode"),
+    ConfigurationSaving = {
+        Enabled = true, 
+        FolderName = nil,
+        FileName = "ViolenceDistrictConfig"
+    },
+    Discord = {
+        Enabled = false, 
+        Invite = "CnNqEVFxh6",
+        RememberJoins = false
+    },
+    KeySystem = false
+})
+
+
+local CreditsTab = Window:CreateTab("ℹ️ Credits & Info", 4483362458)
+
+CreditsTab:CreateSection("👤 Main Developer")
+
+CreditsTab:CreateLabel("Created by: goldgoldgoldblazn")
+CreditsTab:CreateLabel("Version: 2.2 (Mobile Compatible)")
+CreditsTab:CreateLabel("")
+CreditsTab:CreateLabel("🌟 Thank you for using my script!")
+
+CreditsTab:CreateSection("💬 Discord Community")
+
+CreditsTab:CreateLabel("Join for updates, support & more!")
+CreditsTab:CreateLabel("Discord: discord.gg/CnNqEVFxh6")
+
+CreditsTab:CreateButton({
+    Name = "📋 Copy Discord Invite Link",
+    Callback = function()
+        local inviteLink = "https://discord.gg/CnNqEVFxh6"
+        
+        local success = pcall(function()
+            setclipboard(inviteLink)
+        end)
+        
+        if success then
+            notify("Discord Link Copied!", "discord.gg/CnNqEVFxh6 copied to clipboard!", 4)
+        else
+            notify("Discord Server", "discord.gg/CnNqEVFxh6 - Copy this manually!", 5)
+        end
+    end
+})
+
+if isMobile then
+    CreditsTab:CreateLabel("")
+    CreditsTab:CreateLabel("📱 Mobile Tip: Link copied!")
+    CreditsTab:CreateLabel("Paste in Discord app or browser")
+end
+
+CreditsTab:CreateSection("📊 Script Information")
+
+CreditsTab:CreateLabel("Game: Violence District")
+CreditsTab:CreateLabel("Platform: " .. (isMobile and "📱 Mobile" or "💻 PC"))
+CreditsTab:CreateLabel("Executor: " .. executorName)
+CreditsTab:CreateLabel("UI Library: Rayfield by Sirius")
+
+CreditsTab:CreateSection("✨ What's New in v2.2")
+
+CreditsTab:CreateParagraph({
+    Title = "Mobile Support Added!",
+    Content = "✅ Delta & KRNL Support\n✅ Touch Controls\n✅ Better Performance\n✅ iOS/Android Compatible\n✅ Smart Auto-Attack\n✅ Draggable FPS Counter\n✅ Mobile Optimizations"
+})
+
+CreditsTab:CreateParagraph({
+    Title = "All Features",
+    Content = "• Player & Object ESP\n• Auto-Complete Generators\n• Smart Auto Attack (Killer)\n• Quick Leave Generator\n• Advanced Teleportation\n• Performance Boost (Mobile)\n• Killer Powers\n• Touch Controls"
+})
+
+
+local ESPTab = Window:CreateTab("👁️ ESP", 4483362458)
+ESPTab:CreateSection("Player ESP")
+
+ESPTab:CreateToggle({
+    Name = "Killer ESP (Red)",
+    CurrentValue = false,
+    Flag = "KillerESP",
+    Callback = function(Value)
+        Config.ESP.Killer = Value
+        if Value then
+            startESP()
+        else
+            for _, player in ipairs(Players:GetPlayers()) do
+                if player ~= LocalPlayer and player.Character and player.Team and player.Team.Name == "Killer" then
+                    removeHighlight(player.Character)
+                    removeLabel(player.Character)
+                end
+            end
+        end
+    end
+})
+
+ESPTab:CreateToggle({
+    Name = "Survivor ESP (Green)",
+    CurrentValue = false,
+    Flag = "SurvivorESP",
+    Callback = function(Value)
+        Config.ESP.Survivor = Value
+        if Value then
+            startESP()
+        else
+            for _, player in ipairs(Players:GetPlayers()) do
+                if player ~= LocalPlayer and player.Character and player.Team and player.Team.Name == "Survivors" then
+                    removeHighlight(player.Character)
+                    removeLabel(player.Character)
+                end
+            end
+        end
+    end
+})
+
+ESPTab:CreateSection("Object ESP")
+
+ESPTab:CreateToggle({
+    Name = "Generator ESP (Orange)",
+    CurrentValue = false,
+    Flag = "GeneratorESP",
+    Callback = function(Value)
+        Config.ESP.Generator = Value
+        if Value then
+            startESP()
+        else
+            local map = Workspace:FindFirstChild("Map")
+            if map then
+                for _, obj in ipairs(map:GetDescendants()) do
+                    if obj:IsA("Model") and obj.Name == "Generator" then
+                        removeHighlight(obj)
+                        removeLabel(obj)
+                    end
+                end
+            end
+        end
+    end
+})
+
+ESPTab:CreateToggle({
+    Name = "Gate ESP (White)",
+    CurrentValue = false,
+    Flag = "GateESP",
+    Callback = function(Value)
+        Config.ESP.Gate = Value
+        if Value then
+            startESP()
+        end
+    end
+})
+
+ESPTab:CreateToggle({
+    Name = "Hook ESP (Red)",
+    CurrentValue = false,
+    Flag = "HookESP",
+    Callback = function(Value)
+        Config.ESP.Hook = Value
+        if Value then
+            startESP()
+        else
+            local map = Workspace:FindFirstChild("Map")
+            if map then
+                for _, obj in ipairs(map:GetDescendants()) do
+                    if obj:IsA("Model") and obj.Name == "Hook" then
+                        removeHighlight(obj)
+                        removeLabel(obj)
+                    end
+                end
+            end
+        end
+    end
+})
+
+ESPTab:CreateToggle({
+    Name = "Show Only Closest Hook",
+    CurrentValue = false,
+    Flag = "ShowOnlyClosestHook",
+    Callback = function(Value)
+        Config.ESP.ShowOnlyClosestHook = Value
+        
+        local map = Workspace:FindFirstChild("Map")
+        if map then
+            for _, obj in ipairs(map:GetDescendants()) do
+                if obj:IsA("Model") and obj.Name == "Hook" then
+                    removeHighlight(obj)
+                    removeLabel(obj)
+                end
+            end
+        end
+        
+        if Config.ESP.Hook then
+            updateHookESP()
+        end
+        
+        notify("Hook ESP", Value and "Showing only closest hook" or "Showing all hooks", 2)
+    end
+})
+
+ESPTab:CreateToggle({
+    Name = "Pallet ESP (Yellow)",
+    CurrentValue = false,
+    Flag = "PalletESP",
+    Callback = function(Value)
+        Config.ESP.Pallet = Value
+        if Value then
+            startESP()
+        end
+    end
+})
+
+ESPTab:CreateToggle({
+    Name = "Window ESP (Light Blue)",
+    CurrentValue = false,
+    Flag = "WindowESP",
+    Callback = function(Value)
+        Config.ESP.Window = Value
+        if Value then
+            startESP()
+        end
+    end
+})
+
+ESPTab:CreateToggle({
+    Name = "Pumpkin ESP (Orange)",
+    CurrentValue = false,
+    Flag = "PumpkinESP",
+    Callback = function(Value)
+        Config.ESP.Pumpkin = Value
+        if Value then
+            startESP()
+        end
+    end
+})
+
+ESPTab:CreateSection("Settings")
+
+ESPTab:CreateToggle({
+    Name = "Show Distance",
+    CurrentValue = true,
+    Flag = "ShowDistance",
+    Callback = function(Value)
+        Config.ESP.ShowDistance = Value
+    end
+})
+
+ESPTab:CreateSlider({
+    Name = "Max Distance",
+    Range = {100, 1000},
+    Increment = 50,
+    CurrentValue = 500,
+    Flag = "MaxDistance",
+    Callback = function(Value)
+        Config.ESP.MaxDistance = Value
+    end
+})
+
+ESPTab:CreateSlider({
+    Name = "Update Rate (seconds)",
+    Range = {0.1, 2},
+    Increment = 0.1,
+    CurrentValue = 0.5,
+    Flag = "UpdateRate",
+    Callback = function(Value)
+        Config.Performance.UpdateRate = Value
+    end
+})
+
+ESPTab:CreateSlider({
+    Name = "Max ESP Objects",
+    Range = {25, 500},
+    Increment = 25,
+    CurrentValue = isMobile and 50 or 100,
+    Flag = "MaxESPObjects",
+    Callback = function(Value)
+        Config.Performance.MaxESPObjects = Value
+    end
+})
+
+
+local GameplayTab = Window:CreateTab("🎮 Gameplay", 4483362458)
+
+local GameplayTab = Window:CreateTab("🎮 Gameplay", 4483362458)
+GameplayTab:CreateSection("Auto Features")
+
+GameplayTab:CreateToggle({
+    Name = "Auto Complete Generators",
+    CurrentValue = false,
+    Flag = "AutoGenerator",
+    Callback = function(Value)
+        Config.AutoFeatures.AutoGenerator = Value
+        if Value then
+            notify("Auto Generator", "Enabled - Generators will auto-complete", 3)
+        else
+            notify("Auto Generator", "Disabled", 2)
+        end
+    end
+})
+
+GameplayTab:CreateDropdown({
+    Name = "Generator Mode",
+    Options = {"Great (Fast)", "Normal (Slow)"},
+    CurrentOption = "Great (Fast)",
+    Flag = "GeneratorMode",
+    Callback = function(Option)
+        if Option == "Great (Fast)" then
+            Config.AutoFeatures.GeneratorMode = "great"
+        else
+            Config.AutoFeatures.GeneratorMode = "normal"
+        end
+    end
+})
+
+GameplayTab:CreateSection("Quick Escape")
+
+GameplayTab:CreateToggle({
+    Name = "Enable Quick Leave Generator",
+    CurrentValue = false,
+    Flag = "AutoLeaveGenerator",
+    Callback = function(Value)
+        Config.AutoFeatures.AutoLeaveGenerator = Value
+        if Value then
+            startAutoLeaveGenerator()
+        else
+            stopAutoLeaveGenerator()
+        end
+    end
+})
+
+if not isMobile then
+    GameplayTab:CreateDropdown({
+        Name = "Leave Generator Keybind",
+        Options = {"Q", "E", "F", "G", "X", "Z", "V", "B"},
+        CurrentOption = "Q",
+        Flag = "LeaveKeybind",
+        Callback = function(Option)
+            local keyMap = {
+                ["Q"] = Enum.KeyCode.Q,
+                ["E"] = Enum.KeyCode.E,
+                ["F"] = Enum.KeyCode.F,
+                ["G"] = Enum.KeyCode.G,
+                ["X"] = Enum.KeyCode.X,
+                ["Z"] = Enum.KeyCode.Z,
+                ["V"] = Enum.KeyCode.V,
+                ["B"] = Enum.KeyCode.B
+            }
+            
+            Config.AutoFeatures.LeaveKeybind = keyMap[Option]
+            
+            if Config.AutoFeatures.AutoLeaveGenerator then
+                stopAutoLeaveGenerator()
+                startAutoLeaveGenerator()
+            end
+            
+            notify("Keybind Changed", "Leave generator key set to: " .. Option, 2)
+        end
+    })
+end
+
+GameplayTab:CreateSlider({
+    Name = "Detection Range (studs)",
+    Range = {5, 30},
+    Increment = 1,
+    CurrentValue = 15,
+    Flag = "LeaveDistance",
+    Callback = function(Value)
+        Config.AutoFeatures.LeaveDistance = Value
+    end
+})
+
+GameplayTab:CreateButton({
+    Name = "Leave Generator Now",
+    Callback = function()
+        leaveGenerator()
+    end
+})
+
+GameplayTab:CreateSection("Manual Actions")
+
+GameplayTab:CreateButton({
+    Name = "Complete All Generators (Instant)",
+    Callback = function()
+        local map = Workspace:FindFirstChild("Map")
+        if not map then
+            notify("Error", "Map not found", 3)
+            return
+        end
+        
+        local completed = 0
+        
+        safeCall(function()
+            local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+            if not remotes then return end
+            
+            local genRemotes = remotes:FindFirstChild("Generator")
+            if not genRemotes then return end
+            
+            local repairEvent = genRemotes:FindFirstChild("RepairEvent")
+            local skillCheckEvent = genRemotes:FindFirstChild("SkillCheckResultEvent")
+            
+            if not repairEvent or not skillCheckEvent then return end
+            
+            for _, obj in ipairs(map:GetDescendants()) do
+                if obj:IsA("Model") and obj.Name == "Generator" then
+                    for _, point in ipairs(obj:GetChildren()) do
+                        if point.Name:find("GeneratorPoint") then
+                            pcall(function()
+                                for i = 1, 10 do
+                                    repairEvent:FireServer(point, true)
+                                    skillCheckEvent:FireServer("success", 1, obj, point)
+                                end
+                                completed = completed + 1
+                            end)
+                        end
+                    end
+                end
+            end
+        end)
+        
+        if completed > 0 then
+            notify("Complete!", string.format("Completed %d generator(s)", completed), 4)
+        else
+            notify("Failed", "Could not find generators", 3)
+        end
+    end
+})
+
+GameplayTab:CreateSection("Killer Powers")
+
+GameplayTab:CreateToggle({
+    Name = "Auto Attack Nearby Survivors",
+    CurrentValue = false,
+    Flag = "AutoAttack",
+    Callback = function(Value)
+        Config.AutoFeatures.AutoAttack = Value
+        if Value then
+            startAutoAttack()
+        else
+            stopAutoAttack()
+        end
+    end
+})
+
+GameplayTab:CreateSlider({
+    Name = "Auto Attack Range (studs)",
+    Range = {5, 20},
+    Increment = 1,
+    CurrentValue = 10,
+    Flag = "AttackRange",
+    Callback = function(Value)
+        Config.AutoFeatures.AttackRange = Value
+    end
+})
+
+GameplayTab:CreateButton({
+    Name = "Activate Killer Power",
+    Callback = function()
+        safeCall(function()
+            local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+            if remotes then
+                local killerRemotes = remotes:FindFirstChild("Killers")
+                if killerRemotes then
+                    local killerFolder = killerRemotes:FindFirstChild("Killer")
+                    if killerFolder then
+                        local activatePower = killerFolder:FindFirstChild("ActivatePower")
+                        if activatePower then
+                            activatePower:FireServer()
+                            notify("Power Activated", "Killer power triggered", 2)
+                        end
+                    end
+                end
+            end
+        end)
+    end
+})
+
+GameplayTab:CreateButton({
+    Name = "Basic Attack (Killer)",
+    Callback = function()
+        safeCall(function()
+            local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+            if remotes then
+                local attacks = remotes:FindFirstChild("Attacks")
+                if attacks then
+                    local basicAttack = attacks:FindFirstChild("BasicAttack")
+                    if basicAttack then
+                        basicAttack:FireServer(false)
+                        notify("Attack", "Basic attack executed", 2)
+                    end
+                end
+            end
+        end)
+    end
+})
+
+
+local TeleportTab = Window:CreateTab("🚀 Teleport", 4483362458)
+
+local TeleportTab = Window:CreateTab("🚀 Teleport", 4483362458)
+TeleportTab:CreateSection("Generator Teleportation")
+
+TeleportTab:CreateButton({
+    Name = "Teleport to Closest Generator",
+    Callback = function()
+        local generators = getGeneratorsByDistance()
+        
+        if #generators == 0 then
+            notify("Not Found", "No generators found on the map", 3)
+            return
+        end
+        
+        local closest = generators[1]
+        if safeTeleport(closest.part.CFrame) then
+            notify("Teleported!", string.format("Teleported to closest generator (%.0fm)", closest.distance), 3)
+        end
+    end
+})
+
+TeleportTab:CreateButton({
+    Name = "Teleport to Farthest Generator",
+    Callback = function()
+        local generators = getGeneratorsByDistance()
+        
+        if #generators == 0 then
+            notify("Not Found", "No generators found on the map", 3)
+            return
+        end
+        
+        local farthest = generators[#generators]
+        if safeTeleport(farthest.part.CFrame) then
+            notify("Teleported!", string.format("Teleported to farthest generator (%.0fm)", farthest.distance), 3)
+        end
+    end
+})
+
+TeleportTab:CreateButton({
+    Name = "Teleport Through All Generators",
+    Callback = function()
+        local generators = getGeneratorsByDistance()
+        
+        if #generators == 0 then
+            notify("Not Found", "No generators found on the map", 3)
+            return
+        end
+        
+        notify("Starting", string.format("Teleporting through %d generators...", #generators), 3)
+        
+        task.spawn(function()
+            for i, gen in ipairs(generators) do
+                if not getCharacterRootPart() then break end
+                
+                safeTeleport(gen.part.CFrame)
+                notify("Generator " .. i, string.format("At generator %d/%d (%.0fm)", i, #generators, gen.distance), 2)
+                
+                task.wait(Config.Teleportation.TeleportDelay)
+            end
+            
+            notify("Complete!", "Visited all generators", 3)
+        end)
+    end
+})
+
+TeleportTab:CreateButton({
+    Name = "Show Generator List (Console)",
+    Callback = function()
+        local generators = getGeneratorsByDistance()
+        
+        if #generators == 0 then
+            notify("Not Found", "No generators found", 3)
+            print("No generators found on the map")
+            return
+        end
+        
+        print("\n=== GENERATOR LIST ===")
+        for i, gen in ipairs(generators) do
+            print(string.format("%d. Generator at %.0fm - Position: %s", 
+                i, gen.distance, tostring(gen.position)))
+        end
+        print("======================\n")
+        
+        notify("List Printed", string.format("Found %d generators - Check console (F9)", #generators), 3)
+    end
+})
+
+TeleportTab:CreateSection("Other Teleports")
+
+TeleportTab:CreateButton({
+    Name = "Teleport to Nearest Gate",
+    Callback = function()
+        local hrp = getCharacterRootPart()
+        if not hrp then
+            notify("Error", "Character not found", 3)
+            return
+        end
+        
+        local map = Workspace:FindFirstChild("Map")
+        if not map then
+            notify("Error", "Map not found", 3)
+            return
+        end
+        
+        local nearestGate = nil
+        local nearestDist = math.huge
+        
+        for _, obj in ipairs(map:GetDescendants()) do
+            if obj:IsA("Model") and obj.Name == "Gate" then
+                local gatePart = obj:FindFirstChildWhichIsA("BasePart")
+                if gatePart then
+                    local dist = (gatePart.Position - hrp.Position).Magnitude
+                    if dist < nearestDist then
+                        nearestGate = gatePart
+                        nearestDist = dist
+                    end
+                end
+            end
+        end
+        
+        if nearestGate then
+            safeTeleport(nearestGate.CFrame)
+            notify("Teleported", string.format("Teleported to gate (%.0fm)", nearestDist), 3)
+        else
+            notify("Not Found", "No gates found", 3)
+        end
+    end
+})
+
+TeleportTab:CreateSection("Survivor Win")
+
+TeleportTab:CreateButton({
+    Name = "Escape Game (Survivor Only)",
+    Callback = function()
+        if not isSurvivor() then
+            notify("Error", "You must be a Survivor to use this!", 3)
+            return
+        end
+        
+        local hrp = getCharacterRootPart()
+        if not hrp then
+            notify("Error", "Character not found", 3)
+            return
+        end
+        
+        local map = Workspace:FindFirstChild("Map")
+        if not map then
+            notify("Error", "Map not found", 3)
+            return
+        end
+        
+        local gate = nil
+        for _, obj in ipairs(map:GetDescendants()) do
+            if obj:IsA("Model") and obj.Name == "Gate" then
+                gate = obj
+                break
+            end
+        end
+        
+        if not gate then
+            notify("Error", "No gates found on map", 3)
+            return
+        end
+        
+        local escapeZone = gate:FindFirstChild("Escape") or gate:FindFirstChildWhichIsA("BasePart")
+        
+        if escapeZone then
+            safeTeleport(escapeZone.CFrame, Vector3.new(0, 5, 0))
+            
+            task.wait(0.5)
+            
+            safeCall(function()
+                local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+                if remotes then
+                    local gateRemote = remotes:FindFirstChild("Gate")
+                    if gateRemote then
+                        local escapeEvent = gateRemote:FindFirstChild("Escape")
+                        if escapeEvent then
+                            escapeEvent:FireServer()
+                        end
+                    end
+                end
+            end)
+            
+            notify("Escape!", "Teleported to exit gate - Walk through to escape!", 4)
+        else
+            notify("Error", "Could not find escape zone", 3)
+        end
+    end
+})
+
+TeleportTab:CreateSection("Teleport Settings")
+
+TeleportTab:CreateSlider({
+    Name = "Teleport Height Offset",
+    Range = {0, 10},
+    Increment = 1,
+    CurrentValue = 3,
+    Flag = "TeleportOffset",
+    Callback = function(Value)
+        Config.Teleportation.TeleportOffset = Value
+    end
+})
+
+TeleportTab:CreateSlider({
+    Name = "Multi-Teleport Delay (seconds)",
+    Range = {0.1, 5},
+    Increment = 0.1,
+    CurrentValue = 0.1,
+    Flag = "TeleportDelay",
+    Callback = function(Value)
+        Config.Teleportation.TeleportDelay = Value
+    end
+})
+
+TeleportTab:CreateToggle({
+    Name = "Safe Teleport (Disable Collision)",
+    CurrentValue = true,
+    Flag = "SafeTeleport",
+    Callback = function(Value)
+        Config.Teleportation.SafeTeleport = Value
+    end
+})
+
+
+local SettingsTab = Window:CreateTab("⚙️ Settings", 4483362458)
+
+
+local SettingsTab = Window:CreateTab("⚙️ Settings", 4483362458)
+
+SettingsTab:CreateSection("Performance Options")
+
+SettingsTab:CreateToggle({
+    Name = "Disable Particles & Effects",
+    CurrentValue = false,
+    Flag = "DisableParticles",
+    Callback = function(Value)
+        Config.Performance.DisableParticles = Value
+        applyPerformanceSettings()
+        notify("Performance", Value and "Particles disabled" or "Particles enabled", 2)
+    end
+})
+
+SettingsTab:CreateToggle({
+    Name = "Lower Graphics Quality",
+    CurrentValue = false,
+    Flag = "LowerGraphics",
+    Callback = function(Value)
+        Config.Performance.LowerGraphics = Value
+        applyPerformanceSettings()
+        notify("Performance", Value and "Graphics lowered" or "Graphics reset", 2)
+    end
+})
+
+SettingsTab:CreateToggle({
+    Name = "Disable Shadows",
+    CurrentValue = false,
+    Flag = "DisableShadows",
+    Callback = function(Value)
+        Config.Performance.DisableShadows = Value
+        applyPerformanceSettings()
+        notify("Performance", Value and "Shadows disabled" or "Shadows enabled", 2)
+    end
+})
+
+SettingsTab:CreateToggle({
+    Name = "Reduce Render Distance",
+    CurrentValue = false,
+    Flag = "ReduceRenderDistance",
+    Callback = function(Value)
+        Config.Performance.ReduceRenderDistance = Value
+        applyPerformanceSettings()
+        notify("Performance", Value and "Render distance reduced" or "Render distance normal", 2)
+    end
+})
+
+SettingsTab:CreateToggle({
+    Name = "Use Distance Culling (ESP)",
+    CurrentValue = true,
+    Flag = "UseDistanceCulling",
+    Callback = function(Value)
+        Config.Performance.UseDistanceCulling = Value
+        notify("Performance", Value and "Distance culling enabled" or "Distance culling disabled", 2)
+    end
+})
+
+SettingsTab:CreateButton({
+    Name = "Apply All Performance Boosts",
+    Callback = function()
+        Config.Performance.DisableParticles = true
+        Config.Performance.LowerGraphics = true
+        Config.Performance.DisableShadows = true
+        Config.Performance.ReduceRenderDistance = true
+        Config.Performance.UseDistanceCulling = true
+        applyPerformanceSettings()
+        notify("Performance", "All performance boosts applied!", 3)
+    end
+})
+
+SettingsTab:CreateButton({
+    Name = "Reset Performance Settings",
+    Callback = function()
+        Config.Performance.DisableParticles = false
+        Config.Performance.LowerGraphics = false
+        Config.Performance.DisableShadows = false
+        Config.Performance.ReduceRenderDistance = false
+        resetPerformanceSettings()
+        notify("Performance", "Settings reset to default", 2)
+    end
+})
+
+if isMobile then
+    SettingsTab:CreateSection("Mobile Controls")
+    
+    SettingsTab:CreateToggle({
+        Name = "Enable Touch Controls",
+        CurrentValue = true,
+        Flag = "TouchControls",
+        Callback = function(Value)
+            Config.Mobile.TouchControlsEnabled = Value
+            if Value and not MobileUI then
+                createMobileControls()
+            elseif not Value and MobileUI then
+                MobileUI:Destroy()
+                MobileUI = nil
+            end
+        end
+    })
+    
+    SettingsTab:CreateSlider({
+        Name = "Button Size",
+        Range = {60, 120},
+        Increment = 10,
+        CurrentValue = 80,
+        Flag = "ButtonSize",
+        Callback = function(Value)
+            Config.Mobile.ButtonSize = Value
+            if MobileUI then
+                MobileUI:Destroy()
+                createMobileControls()
+            end
+        end
+    })
+    
+    SettingsTab:CreateSlider({
+        Name = "Button Transparency",
+        Range = {0, 0.8},
+        Increment = 0.1,
+        CurrentValue = 0.3,
+        Flag = "ButtonTransparency",
+        Callback = function(Value)
+            Config.Mobile.ButtonTransparency = Value
+            if MobileUI then
+                for _, button in ipairs(MobileUI:GetChildren()) do
+                    if button:IsA("TextButton") then
+                        button.BackgroundTransparency = Value
+                    end
+                end
+            end
+        end
+    })
+    
+    SettingsTab:CreateSection("📱 Mobile Performance Boost")
+    
+    SettingsTab:CreateToggle({
+        Name = "Auto Mobile Optimization",
+        CurrentValue = true,
+        Flag = "AutoOptimize",
+        Callback = function(Value)
+            Config.Mobile.AutoOptimize = Value
+            if Value then
+                applyMobileOptimizations()
+                notify("Mobile Optimization", "Basic optimizations applied!", 3)
+            else
+                resetPerformanceSettings()
+                notify("Mobile Optimization", "Optimizations reset", 2)
+            end
+        end
+    })
+    
+    SettingsTab:CreateToggle({
+        Name = "🔥 ULTRA Performance Mode (Aggressive)",
+        CurrentValue = false,
+        Flag = "AggressiveOptimization",
+        Callback = function(Value)
+            Config.Mobile.AggressiveOptimization = Value
+            if Value then
+                applyAggressiveMobileOptimizations()
+                notify("ULTRA MODE", "Maximum FPS boost! (Lower graphics)", 4)
+            else
+                resetPerformanceSettings()
+                if Config.Mobile.AutoOptimize then
+                    applyMobileOptimizations()
+                end
+                notify("ULTRA MODE", "Disabled - Graphics restored", 2)
+            end
+        end
+    })
+    
+    SettingsTab:CreateButton({
+        Name = "🚀 Apply All Mobile Optimizations NOW",
+        Callback = function()
+            Config.Performance.DisableParticles = true
+            Config.Performance.LowerGraphics = true
+            Config.Performance.DisableShadows = true
+            Config.Performance.ReduceRenderDistance = true
+            Config.Performance.UseDistanceCulling = true
+            Config.Performance.UpdateRate = 1.0
+            Config.Performance.MaxESPObjects = 25
+            
+            applyAggressiveMobileOptimizations()
+            
+            notify("ALL OPTIMIZATIONS", "Maximum mobile performance applied! 🚀", 5)
+        end
+    })
+    
+    SettingsTab:CreateButton({
+        Name = "Reset All Optimizations",
+        Callback = function()
+            Config.Performance.DisableParticles = false
+            Config.Performance.LowerGraphics = false
+            Config.Performance.DisableShadows = false
+            Config.Performance.ReduceRenderDistance = false
+            Config.Performance.UpdateRate = 0.5
+            Config.Performance.MaxESPObjects = 50
+            Config.Mobile.AutoOptimize = false
+            Config.Mobile.AggressiveOptimization = false
+            
+            resetPerformanceSettings()
+            
+            notify("Reset Complete", "All settings restored to default", 3)
+        end
+    })
+end
+
+SettingsTab:CreateSection("Display Options")
+
+SettingsTab:CreateToggle({
+    Name = "Show FPS Counter",
+    CurrentValue = false,
+    Flag = "FPSCounter",
+    Callback = function(Value)
+        if Value then
+            createFPSCounter()
+        else
+            removeFPSCounter()
+            notify("FPS Counter", "Disabled", 2)
+        end
+    end
+})
+
+SettingsTab:CreateSection("Script Controls")
+
+SettingsTab:CreateButton({
+    Name = "Clear All ESP",
+    Callback = function()
+        clearAllESP()
+        notify("Cleared", "All ESP cleared", 2)
+    end
+})
+
+SettingsTab:CreateButton({
+    Name = "Refresh ESP",
+    Callback = function()
+        clearAllESP()
+        updateAllESP()
+        notify("Refreshed", "ESP refreshed", 2)
+    end
+})
+
+SettingsTab:CreateButton({
+    Name = "Unload Script",
+    Callback = function()
+        stopESP()
+        clearAllESP()
+        stopAutoLeaveGenerator()
+        stopAutoAttack()
+        resetPerformanceSettings()
+        removeFPSCounter()
+        if MobileUI then
+            MobileUI:Destroy()
+        end
+        Rayfield:Destroy()
+        notify("Unloaded", "Script unloaded", 2)
+    end
+})
+
+
+
+
+
+task.spawn(function()
+    while task.wait(0.2) do
+        if Config.AutoFeatures.AutoGenerator then
+            safeCall(function()
+                local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+                if not remotes then return end
+                
+                local genRemotes = remotes:FindFirstChild("Generator")
+                if not genRemotes then return end
+                
+                local repairEvent = genRemotes:FindFirstChild("RepairEvent")
+                local skillCheckEvent = genRemotes:FindFirstChild("SkillCheckResultEvent")
+                
+                if not repairEvent or not skillCheckEvent then return end
+                
+                local map = Workspace:FindFirstChild("Map")
+                if not map then return end
+                
+                for _, obj in ipairs(map:GetDescendants()) do
+                    if obj:IsA("Model") and obj.Name == "Generator" then
+                        for _, point in ipairs(obj:GetChildren()) do
+                            if point.Name:find("GeneratorPoint") then
+                                pcall(function()
+                                    repairEvent:FireServer(point, true)
+                                    
+                                    local result = Config.AutoFeatures.GeneratorMode == "great" and "success" or "neutral"
+                                    local value = Config.AutoFeatures.GeneratorMode == "great" and 1 or 0
+                                    skillCheckEvent:FireServer(result, value, obj, point)
+                                end)
+                            end
+                        end
+                    end
+                end
+            end)
+        end
     end
 end)
 
-Players.PlayerRemoving:Connect(function(p)
-    for _,n in ipairs({p.Name.."_Chased",p.Name.."_Killer",p.Name}) do
-        local o=IndicatorGui:FindFirstChild(n); if o then o:Destroy() end
-    end
-end)
 
-RefreshESP()
-InitializeAutoSkillCheck()
-print("[TWKS] v6 loaded — open UTIL tab → 'Режим' → tap IDEAL or SAFE.")
+if isMobile then
+    task.wait(1)
+    createMobileControls()
+    
+    
+    if Config.Mobile.AutoOptimize then
+        task.wait(0.5)
+        applyMobileOptimizations()
+        notify("Mobile Mode", "Auto-optimizations applied for better FPS!", 4)
+    end
+end
+
+
+
+
+
+notify("Script Loaded!", "Violence District v2.2 by goldgoldgoldblazn", 4)
+
+print("=== Violence District Golds Easy Hub v2.2 ===")
+print("Developer: goldgoldgoldblazn")
+print("Discord: https://discord.gg/CnNqEVFxh6")
+print("Platform: " .. (isMobile and "Mobile" or "PC"))
+print("Executor: " .. executorName)
+print("")
+print("v2.2 Changes:")
+print("- ✅ Fixed Delta executor compatibility")
+print("- ✅ Fixed KRNL execution issues")
+print("- ✅ Added mobile/touch controls")
+print("- ✅ Better HTTP request handling")
+print("- ✅ iOS/Android support")
+print("- ✅ Performance optimizations for mobile")
+print("- ✅ Fixed notification errors")
+print("- ✅ Disabled config saving to prevent errors")
+print("=========================================")
